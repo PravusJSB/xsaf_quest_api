@@ -11,7 +11,7 @@
 
     A set of key functions to action various tasks like saving data, printing to log and to the mission
 
-    -- invokation
+    -- invocation
       local jsb_core = jsb.getCore()
   ]]
 --
@@ -21,7 +21,7 @@
 
     The JMR module is used to query mission objects, generation of vectors
 
-    -- invokation
+    -- invocation
       local jmr = aiMed.fun.getJMR()
 
     -- function documentation
@@ -98,7 +98,7 @@
 
     A comprehensive yet simple tasking module to control mission assets
 
-    -- invokation
+    -- invocation
       local ai = newAI.getAI()
   ]]
 --
@@ -108,7 +108,7 @@
 
     A collection of C++ mission functions to facilitate extra mission functionality
 
-    -- invokation
+    -- invocation
       local api = jsb.getAPI()
   ]]
 --
