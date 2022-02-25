@@ -1,0 +1,165 @@
+-- XSAF Quest Framework
+
+-- global calls
+--
+
+XQF = {} -- global quest framework container
+
+-- locals
+  local ingame_feedback = true -- if true log messages will be replicated ingame too
+  local ingame_display = 40 -- time on screen for ingame messages
+  local ingame_clear = false -- clearview on message ingame
+  local _time = function(n) return timer.getTime()+(n or 0) end
+  local _log = function(fmt,...) local msg = "JSB.Cmdo: "..string.format(fmt or "",...) env.info(msg) if ingame_feedback then trigger.action.outText(msg, ingame_display, ingame_clear) end end
+  local trigger_get_zone = trigger.misc.getZone
+  local sZones = globalOptions.spawn.red.zRef
+  local _,jmr,ai,boom,veh_templ,has_attribute
+  timer.scheduleFunction(function()
+    has_attribute = aiMed.cache()
+    _ = aiMed.fun
+    jmr = _.getJMR()
+    ai = newAI.getAI()
+    boom = jsb.boom
+    veh_templ = Spm.get("xsafAbr",2,'vehicle','cmdo_veh')
+  end,nil,_time(9.5))
+  local troops = spManager.callSpawns().spc[4][1]
+  local deepCopy = routines.utils.deepCopy
+  local do_not_save = DONOTSAVE
+--
+
+-- data
+  local xqc = {
+    coalition = {},
+    personal = {},
+    config = {},
+  } -- local data
+--
+
+-- Quest Class
+  XQC = {} -- global class container
+
+  local xqm = {} -- shared methods
+  local xqmp = {} -- personal methods
+  local xqmc = {} -- coalition methods
+
+  -- methods
+
+    --[[
+      a way to;
+        construct quest
+          have a begin, goal/s, {...}, win condition, end, result, reward
+        track progress of player
+    ]]
+
+    -- personal
+    --
+
+    -- coslition
+      -- global msg out
+    --
+
+    -- shared
+      -- data saving and recovery
+
+      -- set to started, adds a time stamp, increases flag number to 1, runs the quest start params
+      -- return: nil
+      function xqm:start()
+        self.time_start = _time()
+        self:inc()
+      end
+
+      -- increases flag by n @number, or 1 if n is nil
+      -- return: nil
+      function xqm:inc(n)
+        self.flag = n or (self.flag + 1)
+      end
+    --
+
+    -- construct the metamethods from shared + methods passed
+    -- return: table of merged methods
+    function method_construct(method_to_merge)
+      local to_merge = {method_to_merge, xqm}
+      local merged = {}
+      for i = 1, 2 do
+        for method_name, method_function in pairs (to_merge[i]) do
+          merged[method_name] = method_function
+        end
+      end
+      return merged
+    end
+  --
+
+  -- enums
+    XQC.quest_type = {
+      unit_kill = 1,
+    }
+  --
+
+  -- local function to take personal quest params and create object
+  -- return: quest object with methods or nil if fail
+  local function personal_quest(setup)
+    if not setup.player_name then return end
+    xqc.personal[setup.player_name] = {
+      player_name = setup.player_name,
+      time_start = 0,
+      quest_type = setup.quest_type,
+      flag = 0,
+    }
+    setmetatable(xqc.personal[setup.player_name], { __index = method_construct(xqmp) })
+    return xqc.personal[setup.player_name]
+  end
+
+  -- local function to take coalition quest params and create object
+  -- return: quest object with methods or nil if fail
+  local function coalition_quest(setup)
+    local index = #xqc.coalition+1
+    xqc.coalition[index] = {
+      time_start = 0,
+      quest_type = setup.quest_type,
+      flag = 0,
+    }
+    setmetatable(xqc.coalition[index], { __index = method_construct(xqmc) })
+    return xqc.coalition[index]
+  end
+
+  -- To create a quest object
+  -- setup{...};
+  -- personal @bool, identifies if is a personal quest
+  -- player_name @string, required if a personal quest
+  -- return: quest object with methods or nil if fail
+  function XQC.newQuest(setup)
+    if setup.personal then
+      return personal_quest(setup)
+    end
+    return coalition_quest(setup)
+  end
+--
+
+-- quest story board
+  -- is personal
+    -- need player name for tracking
+    -- need player unit
+  -- else is coalition
+  -- Start:
+    -- Need to use a hel0, from Hatay, top deliver medical supplies to Aleppo Hospital
+      -- Text for msg out
+      -- need unit to track
+        -- verify is a helo
+        -- verify at Hatay
+        -- track when in the air with a spin
+  -- Middle: Explosion en-route in village, told to re-route to there and deliver to awaiting units
+    -- create explosion in player view
+    -- spawn ground units
+      -- find a spot that works
+      -- take position
+    -- Text msg for player, about the re-route
+      -- give them new coords
+  -- End: Verify landed
+    -- is near the ground units, check helo position
+    -- End quest, give reward
+  -- Spin:
+    -- if player leaves unit, end quest
+--
+
+-- Simple Quest
+--
