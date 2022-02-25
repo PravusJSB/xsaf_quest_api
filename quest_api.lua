@@ -4,6 +4,9 @@
   --[[ -- purpose, use and documentation
     --
   ]]
+  -- for debug
+    local debug_fun = function() return end
+  --
 --
 
 -- Core mission functions
@@ -85,6 +88,29 @@
         jmr.middle
       }
   ]]
+
+  -- for debug
+    aiMed = {
+      fun = {
+        getJMR = function() return {
+          mPoint = {},
+          mRad = 220,
+          search_area = debug_fun,
+          middle = debug_fun,
+          randomPoint = debug_fun,
+          random = debug_fun,
+          getBaseClose = debug_fun,
+          getWeapons = debug_fun,
+          countInZone = debug_fun,
+          findUnits = debug_fun,
+          inZone = debug_fun,
+          getPlayers = debug_fun,
+          findBlueUnit = debug_fun,
+          getKMH = debug_fun,
+        } end,
+      },
+    }
+  --
 --
 
 -- Utility misc
