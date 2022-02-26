@@ -1,6 +1,27 @@
 -- XSAF Quest Framework
 
+-- version: 0.2
+
 -- global calls
+  local _,jmr,ai,boom,veh_templ,has_attribute
+  timer.scheduleFunction(function()
+    has_attribute = aiMed.cache()
+    _ = aiMed.fun
+    jmr = _.getJMR()
+    ai = newAI.getAI()
+    boom = jsb.boom
+    veh_templ = Spm.get("xsafAbr", 2, 'vehicle', 'cmdo_veh')
+  end,nil,_time(9.5))
+
+  local say = jsb.callSTD()[2]
+  local fstr = jsb.callSTD()[10]
+  
+  local troops = spManager.callSpawns().spc[4][1]
+  local deepCopy = pMan.deepCopy
+  local do_not_save = DONOTSAVE
+  
+  local trigger_get_zone = trigger.misc.getZone
+  local sZones = globalOptions.spawn.red.zRef
 --
 
 XQF = {} -- global quest framework container
@@ -11,29 +32,22 @@ XQF = {} -- global quest framework container
   local ingame_clear = false -- clearview on message ingame
   local _time = function(n) return timer.getTime()+(n or 0) end
   local _log = function(fmt,...) local msg = "JSB.XQF: "..string.format(fmt or "",...) env.info(msg) if ingame_feedback then trigger.action.outText(msg, ingame_display, ingame_clear) end end
-  local trigger_get_zone = trigger.misc.getZone
-  local sZones = globalOptions.spawn.red.zRef
-  local _,jmr,ai,boom,veh_templ,has_attribute
-  timer.scheduleFunction(function()
-    has_attribute = aiMed.cache()
-    _ = aiMed.fun
-    jmr = _.getJMR()
-    ai = newAI.getAI()
-    boom = jsb.boom
-    veh_templ = Spm.get("xsafAbr", 2, 'vehicle', 'cmdo_veh')
-  end,nil,_time(9.5))
-  local troops = spManager.callSpawns().spc[4][1]
-  local deepCopy = pMan.deepCopy
-  local do_not_save = DONOTSAVE
 --
 
 -- data
   local xqc = {
-    coalition = {},
-    personal = {},
-    config = {},
+    coalition = {}, -- persistent coalition quest log
+    personal = {}, -- persistent player quest log
+    config = {
+      default_coalition_msg = 17,
+      default_plyr_msg = 25,
+    }, 
   } -- local data
 --
+
+function XQF.getDB()
+  return xqc
+end
 
 -- Quest Class
   XQC = {} -- global class container
@@ -53,41 +67,64 @@ XQF = {} -- global quest framework container
 
     -- personal
       -- player related funs
+      function xqmp:get_class()
+        return Plyr.get(self.player_name)
+      end
+
+      function xqmp:msg(fmt, ...)
+        self:get_class():msg(fmt, ..., xqc.config.default_plyr_msg)
+      end
     --
 
     -- coslition
       -- global msg out
+      function xqmc:msg(fmt, ...)
+        say(fstr(fmt, ...), xqc.config.default_coalition_msg)
+      end
 
       -- adds a hook to start the quest
       -- fun @funciton (optional): can be used to inject a custom function on start
       -- event_id @DCS_Enum: the event id that will trigger quest to start
       -- delays @number/@table (optional): if number then quest starts event + delay, if table { min = n (optoinal), max = n } then will be random time min/max if just max then random 0-max
       -- return: nil
-      function xqmc:add_start_hook(event_id, fun, delays)
-        self.start.hook_func = fun or nil
+      function xqmc:add_start_hook(event_id, fun, delays, msg)
+        if not self.start then self.start = {} end
+        self.start.start_func = fun or nil
         self.start.hook_event = event_id
         if delays then
           self.start.delay_min = delays.min
           self.start.delay_max = delays.max
         end
+        if msg and not self.start.msg then self.start.msg = msg end
       end
     --
 
     -- shared
       -- data saving and recovery
 
-      -- set to started, adds a time stamp, increases flag number to 1, runs the quest start params
-
+      -- sets the starting conditions, spawns objects, gives init info
+      -- args {
+        -- fun @function (optional): use a custom function on start
+        -- msg @string (overload): The message displayed on start, story context, instrutions, first task etc...
+      -- }
+      -- return: nil
       function xqm:set_start_conditions(args)
+        if not self.start then self.start = {} end
         if args.fun then
           self.start.start_func = args.fun
-        elseif args.msg then
+        elseif args.msg and not self.start.msg then
           self.start.msg = args.msg
         end
       end
 
+      -- set to started, adds a time stamp, increases flag number to 1, runs the quest start params
       -- return: nil
-      function xqm:start()
+      function xqm:start_quest()
+        if not self.repeatable_config then
+          return _log("Cannot start quest %s because no repeatable config is set.", self.name)
+        elseif not self.start then
+          return _log("Cannot start quest %s because no start config is set.", self.name)
+        end
         self.time_start = _time()
         self:inc()
       end
@@ -97,17 +134,32 @@ XQF = {} -- global quest framework container
         self.run_time = n
       end
 
+      --[[
+        flags:
+          0 = not started
+          1 = started
+      ]]
+
       -- increases flag by n @number, or 1 if n is nil
       -- return: nil
       function xqm:inc(n)
         self.flag = n or (self.flag + 1)
+      end
+
+
+      function xqm:repeatable(is_repeatable, time_based, reboot_reset)
+        self.repeatable_config = {
+          repeatable = is_repeatable,
+          min_time = time_based,
+          reboot_reset = reboot_reset,
+        }
       end
     --
 
     -- construct the metamethods from shared + methods passed
     -- return: table of merged methods
     function method_construct(method_to_merge)
-      local to_merge = {method_to_merge, xqm}
+      local to_merge = { xqm, method_to_merge }
       local merged = {}
       for i = 1, 2 do
         for method_name, method_function in pairs (to_merge[i]) do
@@ -129,6 +181,7 @@ XQF = {} -- global quest framework container
   local function personal_quest(setup)
     if not setup.player_name then return end
     xqc.personal[setup.player_name] = {
+      name = setup.quest_name,
       player_name = setup.player_name,
       time_start = 0,
       quest_type = setup.quest_type,
@@ -136,11 +189,13 @@ XQF = {} -- global quest framework container
       -- optional args at setup, may need to be added later by implicit method call
         run_time = setup.run_time or nil,
         spin_func = setup.spin_fun or nil,
-        start = {
-          start_func = nil,
-          msg = nil,
-        },
+        start = nil,
+        -- {
+        --   start_func = nil,
+        --   msg = nil,
+        -- },
       --
+      msg_store = {},
     }
     setmetatable(xqc.personal[setup.player_name], { __index = method_construct(xqmp) })
     return xqc.personal[setup.player_name]
@@ -151,6 +206,7 @@ XQF = {} -- global quest framework container
   local function coalition_quest(setup)
     local index = #xqc.coalition+1
     xqc.coalition[index] = {
+      name = setup.quest_name,
       time_start = 0,
       quest_type = setup.quest_type,
       flag = 0,
@@ -158,12 +214,13 @@ XQF = {} -- global quest framework container
         run_time = setup.run_time or nil,
         spin_time = setup.spin_time or nil,
         spin_func = setup.spin_fun or nil,
-        start = {
-          start_func = nil,
-          msg = nil,
-          hook_func = nil,
-          hook_event = nil,
-        },
+        start = nil,
+        -- {
+        --   start_func = nil,
+        --   msg = nil,
+        --   hook_func = nil,
+        --   hook_event = nil,
+        -- },
       --
     }
     setmetatable(xqc.coalition[index], { __index = method_construct(xqmc) })
@@ -174,6 +231,7 @@ XQF = {} -- global quest framework container
   -- setup{...};
   -- personal @bool, identifies if is a personal quest
   -- player_name @string, required if a personal quest
+  -- quest_name @string, required name of the quest
   -- return: quest object with methods or nil if fail
   function XQC.newQuest(setup)
     if setup.personal then
@@ -214,34 +272,33 @@ XQF = {} -- global quest framework container
   -- // This mission instructs blue to destroy fuel storage tanks at a refinery 
   -- // the reward would be reduced red flights out of Bassel, hama, AQ and Rene for 3 hours
 
-  local example = XQC.newQuest({})
-
-  -- if(BASSEL is RED  ){
-  -- 	// only spawn this mission if bassel is red
-
-  example:add_start_hook(10, nil, {min = 300, max = 1200})
+  local example = XQC.newQuest({quest_name = "ExampleQuest"})
 
   -- 	// set timer - blue has 90 minutes to complete mission
 
   example:set_runtime(5400)
+
+  -- 	//mission start message
     
-  -- 	// spawn protection force
-  -- 	// spawn a series of sams and ground units protecting the refinery
+  local start_msg = "Intelligence has uncovered that Red Force is highly dependant on the Baniyas Refinery located near N35 13 00 E35 58 00.\n\nYour mission is to destroy all 40 fuel tanks on the north side of the refinery and you have 90 minutes to do so.\n\nWe believe success will lead to few red air activity for the next several hours."
+
+  example:set_start_conditions({msg = start_msg})
     
-    
+  -- 	// only spawn this mission if bassel is red
+
+  example:add_start_hook(10, nil, {min = 300, max = 1200})
+
   -- 	//create 4 point trigger zone with specifc coords around the tanks
-    
   -- 	// use the MAP OBJECT IS DEAD trigger and assign trigger zone for mission completion
   -- 	// create a trigger to detect blue taking Bassel
-    
-    
-  -- 	//mission start message
-  -- 	Message to Blue: "Intelligence has uncovered that Red Force is highly dependant on the Baniyas Refinery located near N35 13 00 E35 58 00. 
-  -- 	Your mission is to destroy all 40 fuel tanks on the north side of the refinery and you have 90 minutes to do so. 
-  -- 	We believe success will lead to few red air activity for the next several hours."
-    
-    
-    
+
+      -- we dont need any of that, Pravus
+  
+  -- 	// spawn protection force
+  -- 	// spawn a series of sams and ground units protecting the refinery
+
+  example:create_on_start()
+
   -- 	//after 30 elapsed minutes: 
   -- 	Message to Blue: "you have 60 minutes to destroy the Baniyas refinery (N35 13 00 E35 58 00)"
     
