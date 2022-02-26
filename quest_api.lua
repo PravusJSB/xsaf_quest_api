@@ -62,15 +62,19 @@
         ----
         
         jmr.inZone
+
         ----
         
         jmr.findUnits
+
         ----
         
         jmr.countInZone
+
         ----
         
         jmr.getWeapons
+
         ----
         
         jmr.getBaseClose
@@ -86,6 +90,12 @@
         ----
         
         jmr.middle
+
+        ---- query the owner of an airbase
+        -- base_name @string: the name of the airbase
+        -- return @DCS_Enum: the owner of the base
+
+        jmr.getOwner(base_name)
       }
   ]]
 
@@ -107,6 +117,7 @@
           getPlayers = debug_fun,
           findBlueUnit = debug_fun,
           getKMH = debug_fun,
+          getOwner = debug_fun,
         } end,
       },
     }
