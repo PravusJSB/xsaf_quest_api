@@ -3,20 +3,18 @@
 -- version: 0.2
 
 -- global calls
-  local _,jmr,ai,boom,veh_templ,has_attribute
+  local _, jmr, ai, boom, has_attribute
   timer.scheduleFunction(function()
     has_attribute = aiMed.cache()
     _ = aiMed.fun
     jmr = _.getJMR()
     ai = newAI.getAI()
     boom = jsb.boom
-    veh_templ = Spm.get("xsafAbr", 2, 'vehicle', 'cmdo_veh')
   end,nil,_time(9.5))
 
   local say = jsb.callSTD()[2]
   local fstr = jsb.callSTD()[10]
-  
-  local troops = spManager.callSpawns().spc[4][1]
+
   local deepCopy = pMan.deepCopy
   local do_not_save = DONOTSAVE
   
@@ -31,7 +29,13 @@ XQF = {} -- global quest framework container
   local ingame_display = 40 -- time on screen for ingame messages
   local ingame_clear = false -- clearview on message ingame
   local _time = function(n) return timer.getTime()+(n or 0) end
-  local _log = function(fmt,...) local msg = "JSB.XQF: "..string.format(fmt or "",...) env.info(msg) if ingame_feedback then trigger.action.outText(msg, ingame_display, ingame_clear) end end
+  local _log = function(fmt, ...)
+    local msg = "JSB.XQF: "..string.format(fmt or "", ...)
+    env.info(msg)
+    if ingame_feedback then
+      trigger.action.outText(msg, ingame_display, ingame_clear)
+    end
+  end
 --
 
 -- data
@@ -72,7 +76,8 @@ end
       end
 
       function xqmp:msg(fmt, ...)
-        self:get_class():msg(fmt, ..., xqc.config.default_plyr_msg)
+        local plyr = self:get_class()
+        if plyr then plyr:msg(fstr(fmt, ...), xqc.config.default_plyr_msg) end
       end
     --
 
@@ -100,6 +105,27 @@ end
     --
 
     -- shared
+      -- author in mission debug messages log divert
+      -- player_name @string: name of the player debug should divert to
+      -- return: nil
+      function xqm:player_debug(player_name)
+        self.plyr_debug = player_name
+      end
+
+      -- shared log function
+      -- fmt @string: Lua standard string format
+      -- ... @vararg of any args for the string
+      -- return: nil
+      function xqm:log(fmt, ...)
+        _log(fmt, ...)
+        if self.plyr_debug then
+          local PLYR = Plyr.get(self.player_name)
+          if PLYR then
+            PLYR:msg(fstr(fmt, ...), xqc.config.default_plyr_msg)
+          end
+        end
+      end
+      
       -- data saving and recovery
 
       -- sets the starting conditions, spawns objects, gives init info
@@ -121,14 +147,16 @@ end
       -- return: nil
       function xqm:start_quest()
         if not self.repeatable_config then
-          return _log("Cannot start quest %s because no repeatable config is set.", self.name)
+          return self:log("Cannot start quest %s because no repeatable config is set.", self.name)
         elseif not self.start then
-          return _log("Cannot start quest %s because no start config is set.", self.name)
+          return self:log("Cannot start quest %s because no start config is set.", self.name)
         end
         self.time_start = _time()
         self:inc()
       end
 
+      -- sets the maximum time the quest runs
+      -- n @number: time in seconds
       -- return: nil
       function xqm:set_runtime(n)
         self.run_time = n
@@ -146,19 +174,29 @@ end
         self.flag = n or (self.flag + 1)
       end
 
+      function xqm:schedule_msg(time_to_display, msg, ...)
+        self.msg_store[#self.msg_store+1] = { time_to_display, msg, ... }
+      end
 
-      function xqm:repeatable(is_repeatable, time_based, reboot_reset)
+      -- function to set the behaviour on completion, default is false (in session)
+      -- time_based @number: Quest resets after a time period, if not reboot_reset then time period can be over a reboot
+      -- reboot_reset @bool: (optional): reset on reboot, default = true
+      function xqm:repeatable(time_based, reboot_reset)
         self.repeatable_config = {
-          repeatable = is_repeatable,
+          repeatable = true,
           min_time = time_based,
           reboot_reset = reboot_reset,
         }
+      end
+      
+      function xqm:create_static_on_start(args)
+        self.assets.static = deepCopy(args)
       end
     --
 
     -- construct the metamethods from shared + methods passed
     -- return: table of merged methods
-    function method_construct(method_to_merge)
+    local function method_construct(method_to_merge)
       local to_merge = { xqm, method_to_merge }
       local merged = {}
       for i = 1, 2 do
@@ -173,6 +211,7 @@ end
   -- enums
     XQC.quest_type = {
       unit_kill = 1,
+      static_kill = 2,
     }
   --
 
@@ -196,6 +235,12 @@ end
         -- },
       --
       msg_store = {},
+      assets = {},
+      spawned = {},
+      repeatable_config = {
+        repeatable = false,
+        reboot_reset = true,
+      },
     }
     setmetatable(xqc.personal[setup.player_name], { __index = method_construct(xqmp) })
     return xqc.personal[setup.player_name]
@@ -222,6 +267,15 @@ end
         --   hook_event = nil,
         -- },
       --
+      msg_store = {},
+      completion = {},
+      failure = {},
+      assets = {},
+      spawned = {},
+      repeatable_config = {
+        repeatable = false,
+        reboot_reset = true,
+      },
     }
     setmetatable(xqc.coalition[index], { __index = method_construct(xqmc) })
     return xqc.coalition[index]
@@ -272,18 +326,20 @@ end
   -- // This mission instructs blue to destroy fuel storage tanks at a refinery 
   -- // the reward would be reduced red flights out of Bassel, hama, AQ and Rene for 3 hours
 
-  local example = XQC.newQuest({quest_name = "ExampleQuest"})
+  local example = XQC.newQuest({quest_name = "ExampleQuest", quest_type = XQC.quest_type.static_kill})
 
   -- 	// set timer - blue has 90 minutes to complete mission
 
   example:set_runtime(5400)
+  example:player_debug("Brodie")
 
   -- 	//mission start message
-    
+
   local start_msg = "Intelligence has uncovered that Red Force is highly dependant on the Baniyas Refinery located near N35 13 00 E35 58 00.\n\nYour mission is to destroy all 40 fuel tanks on the north side of the refinery and you have 90 minutes to do so.\n\nWe believe success will lead to few red air activity for the next several hours."
 
   example:set_start_conditions({msg = start_msg})
-    
+  example:repeatable(0, false)
+
   -- 	// only spawn this mission if bassel is red
 
   example:add_start_hook(10, nil, {min = 300, max = 1200})
@@ -293,21 +349,49 @@ end
   -- 	// create a trigger to detect blue taking Bassel
 
       -- we dont need any of that, Pravus
-  
+
   -- 	// spawn protection force
   -- 	// spawn a series of sams and ground units protecting the refinery
 
-  example:create_on_start()
+  example:create_static_on_start({
+    fuel_tanks = {
+      template = {
+        ["category"] = "Fortifications",
+        ["shape_name"] = "kazarma2",
+        ["type"] = "Barracks 2",
+        ["dead"] = false,
+      },
+      config = {
+        number_spawn = 40,
+        position = {},
+        max_radius = 1000,
+        min_radius = 0,
+      },
+      conditions = {
+        kill_all = true,
+      },
+    },
+  })
 
-  -- 	//after 30 elapsed minutes: 
-  -- 	Message to Blue: "you have 60 minutes to destroy the Baniyas refinery (N35 13 00 E35 58 00)"
-    
-  -- 	//after 60 mins
-  -- 	Message to Blue: "you have 30 minutes to destroy the Baniyas refinery (N35 13 00 E35 58 00)"
-    
-  -- 	// after 80 mins
-  -- 	Message to Blue: "you have 10 minutes to destroy the Baniyas refinery (N35 13 00 E35 58 00)"
-    
+  local messages = {
+    [1] = {
+      "you have 60 minutes to destroy the Baniyas refinery (N35 13 00 E35 58 00)",
+      30 * 60
+    },
+    [2] = {
+      "you have 30 minutes to destroy the Baniyas refinery (N35 13 00 E35 58 00)",
+      60 * 60
+    },
+    [3] = {
+      "you have 10 minutes to destroy the Baniyas refinery (N35 13 00 E35 58 00)",
+      80 * 60
+    },
+  }
+
+  for i = 1, #messages do
+    example:schedule_msg(messages[i][2], messages[i][1])
+  end
+
   -- 	map object dead trigger complete {
   -- 		Message to blue: "Great work! The Baniyas refinery has been neutralized and we're already noticing fewer departures from nearby red force bases." 
   -- 		// give reward:
