@@ -16,6 +16,24 @@
 
     -- invocation
       local jsb_core = jsb.getCore()
+
+      ---- simple log function
+      -- fmt @string: format of string, lua convention
+      -- vararg ... @any (optional): any args for the format
+      -- return: nil
+
+      jsb.log(fmt, ...)
+
+  -- for debug
+    jsb.getCore = function() return {
+      log = debug_fun,
+      say = debug_fun,
+      save = debug_fun,
+      chflg = debug_fun,
+      time = debug_fun,
+      fstr = debug_fun,
+    } end
+  --
   ]]
 --
 
@@ -126,8 +144,33 @@
 
 -- Utility misc
   --[[ -- purpose, use and documentation
-    --
+
+    ---- additionals in std library: table
+
+    ---- return a line by line concat list of all the keys as a single string
+    -- table @table: table to print from
+    -- return @string: list of all the keys
+
+    table.keys(table)
+
+    ---- return a random key from a key, value table
+    -- table @table: table to reference
+    -- return @string: random key
+
+    table.randomKey(table)
+
   ]]
+
+  ---- simple code to add to mission to enable a faux console to be able to live load code into the mission for testing
+  ---- instead of having to restart. Place log outputs for returns or ingame print for quick feedback
+  -- use: create a file in DCS_Install/Root called jsb_console.lua, inside write any code you like
+  -- WARNING: This is crude and simple, there is no exception handling here thats your responsibility
+
+  local load_script = function() dofile('jsb_console.lua') end
+
+  -- create a menu for blue
+  debugMenu = missionCommands.addSubMenuForCoalition(2, "Debug menu")
+  missionCommands.addCommandForCoalition(2, "Load code", debugMenu, load_script)
 --
 
 -- Tasking functions
