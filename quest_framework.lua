@@ -165,7 +165,9 @@ end
       --[[
         flags:
           0 = not started
-          1 = started
+          1 = started & spinning
+          3 = fail
+          4 = win
       ]]
 
       -- increases flag by n @number, or 1 if n is nil
@@ -188,9 +190,29 @@ end
           reboot_reset = reboot_reset,
         }
       end
-      
+
       function xqm:create_static_on_start(args)
         self.assets.static = deepCopy(args)
+      end
+
+      function xqm:set_win_config(config)
+        self.completion = deepCopy(config)
+      end
+
+      function xqm:set_null_config(config)
+        self.null_config.msg = config.msg or fstr("Quest, %s, failed.", self.name)
+        self.null_config.func = config.fun
+        self.null_config.del_units = config.delete_units
+        self.null_config.del_stat = config.delete_statics
+        self.null_config.unit_behaviour = config.unit_behaviour
+      end
+
+      function xqm:set_fail_config(config)
+        self.failure.msg = config.msg or fstr("Quest, %s, failed.", self.name)
+        self.failure.func = config.fun
+        self.failure.del_units = config.delete_units
+        self.failure.del_stat = config.delete_statics
+        self.failure.unit_behaviour = config.unit_behaviour
       end
     --
 
@@ -212,6 +234,28 @@ end
     XQC.quest_type = {
       unit_kill = 1,
       static_kill = 2,
+    }
+
+    XQC.reward_type = {
+      intel = 1,
+      personal_credits = 2,
+      warehouse = {
+        a2a = {
+          aim_120 = "{40EF17B7-F508-45de-8566-6FFECC0C1AB8}",
+        },
+        a2g = {
+
+        },
+        fuel = 3,
+      },
+    }
+
+    XQC.red_impacts = {
+      lower_gce = 1,
+    }
+
+    XQC.units_on_end = {
+      attack_blue_base = 1,
     }
   --
 
@@ -268,6 +312,7 @@ end
         -- },
       --
       msg_store = {},
+      null_config = {},
       completion = {},
       failure = {},
       assets = {},
@@ -393,30 +438,55 @@ end
   end
 
   -- 	map object dead trigger complete {
-  -- 		Message to blue: "Great work! The Baniyas refinery has been neutralized and we're already noticing fewer departures from nearby red force bases." 
+  -- 		Message to blue: 
   -- 		// give reward:
-      
+
   -- 		//im not sure how you would get skynet to do this on your side - maybe reduce the fuel to those 4 bases (if red) 
   -- 		// or maybe you have another way to close/reduce flights from them?
       
   -- 		// also Give 50 intel points
   -- 		// mission ends
   -- 	}
-    
+
+  example:set_win_config({
+    msg = "Great work! The Baniyas refinery has been neutralized and we're already noticing fewer departures from nearby red force bases.",
+    reward = XQC.reward_type.intel,
+    intel_points = 50,
+    red_impact = {
+      impact = XQC.red_impacts.lower_gce,
+      gce_pct = 50,
+    },
+  })
+
   -- 	bassel captured by blue trigger{
   -- 		// mission ends
   -- 		// no reward, no penalty
   -- 		// units created for the mission begin driving to bassel :)
-  -- 		Message to Blue: "Great work taking Bassel Al Assad - we're canceling the strike mission at the Baniyas Refinery
+  -- 		Message to Blue: 
       
   -- 	}
+
+  example:set_null_config({
+    msg = "Great work taking Bassel Al Assad - we're canceling the strike mission at the Baniyas Refinery",
+    fun = function()
+      return (Airbase.getByName('Bassel Al-Assad') and (Airbase.getByName('Bassel Al-Assad'):getCoalition() == 2))
+    end,
+    delete_units = false,
+    delete_statics = true,
+    unit_behaviour = XQC.units_on_end.attack_blue_base,
+  })
     
   -- 	time expires trigger{
     
-  -- 		message to blue: "It's too late - Red Force knows what were up to at Baniyas and has resupplied by other means. The refinery strike mission is cancelled."
+  -- 		message to blue: 
   -- 		// mission ends
   -- 	}
     
+  example:set_fail_config({
+    msg = "It's too late - Red Force knows what were up to at Baniyas and has resupplied by other means. The refinery strike mission is cancelled.",
+    delete_units = true,
+    delete_statics = true,
+  })
     
     
     
