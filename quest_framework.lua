@@ -180,7 +180,7 @@
             start_func = args.start_fun,
             hook_event = args.event_id,
             hook_func = args.hook_fun,
-            delay_min = args. dealy or args.min,
+            delay_min = args.dealy or args.min,
             delay_max = args.max,
           }
           self.run_time = args.run_time
@@ -209,6 +209,13 @@
           self.run_time = n
         end
 
+        -- sets the start trigger
+        -- trigger_enum @number: from enum table
+        -- return: nil
+        function xqm_interface:set_trigger_type(trigger_enum)
+          self.on_trigger_start = trigger_enum
+        end
+
         --[[
           flags:
             0 = not started
@@ -221,6 +228,7 @@
             7 = stop for error
             8 = waiting event trigger
             9 = waiting for manual start
+            10 = started with delay
         ]]
 
         -- increases flag by n @number, or 1 if n is nil
@@ -252,7 +260,11 @@
 
         -- pass in the details of any statics to be spawned on start
         function xqm_interface:create_static_on_start(args)
+          if not self.start then
+            return self:log("Must set start conditions before defining statics")
+          end
           self.assets.static = deepCopy(args)
+          self.start.statics = true
         end
 
         function xqm_interface:set_win_config(config)
@@ -295,12 +307,53 @@
           end
         end
 
+            -- fuel_tanks = {
+            --   template = {
+            --     category = "Fortifications",
+            --     shape_name = "kazarma2", -- TODO
+            --     type = "Barracks 2", -- TODO
+            --     dead = false,
+            --   },
+            --   config = {
+            --     number_spawn = 5,
+            --     position = {}, -- TODO
+            --     max_radius = 1000,
+            --     min_radius = 0,
+            --   },
+            --   conditions = {
+            --     kill_all = true,
+            --   },
+            -- }
+
+        -- spawners
+          -- statics
+          function xqm:spawn_statics()
+            			for cargo, templates in pairs (self.drop_template or {}) do
+                  self.spawned[cargo] = {}
+                  for i = 1, #templates do
+                    self.spawned[cargo][#self.spawned[cargo]+1] = coalition.addStaticObject(self.drop_template[cargo][i].owner or 1, self.drop_template[cargo][i])
+                    _log("CDM: spawned crate for object %s", self.name)
+                  end
+                end
+          end
+        --
+
         -- in play spin
         function xqm:maintain()
+          -- delayed start
+          if self.start.delay_max then
+            timer.scheduleFunction(function() self:maintain() end, nil, _time(math.random( self.start.delay_min, self.start.delay_max )))
+            self.start.delay_max = nil
+            return
+          end
           if self.flag == 1 or self.flag == 8 or self.flag == 9 then
             -- transition
             timer.scheduleFunction(function() self:maintain() end, nil, _time(xqc.config.first_maintain))
             -- start config action / execute
+            -- spawn statics
+            if self.start.statics then
+              
+            end
             -- msg schedules
             if #self.msg_store > 0 then
               for i = 1, #self.msg_store do
@@ -308,10 +361,14 @@
               end
             end
             return
+          elseif self.flag == 10 then -- already scheduled, with delayed start
+            return
           end
           if self.to_remove or (self.max_time < _time()) then
-            
+            -- quest should now be removed
+            return
           end
+          timer.scheduleFunction(function() self:maintain() end, nil, _time(self.maintain_time))
         end
 
         function xqm:get_flag()
@@ -377,6 +434,11 @@
 
       XQC.units_on_end = {
         attack_blue_base = 1,
+      }
+
+      XQC.trigger.aircraft_type = {
+        f18 = 1,
+        huey = 2,
       }
     --
 
@@ -534,18 +596,14 @@
 
   example:add_start_hook(10, nil, {min = 300, max = 1200})
 
-  -- spinning function to maintain the quest
-
-  -- TODO
-
   -- setup the static objects used for the kill goal
 
   example:create_static_on_start({
     fuel_tanks = {
       template = {
         ["category"] = "Fortifications",
-        ["shape_name"] = "kazarma2",
-        ["type"] = "Barracks 2",
+        ["shape_name"] = "kazarma2", -- TODO
+        ["type"] = "Barracks 2", -- TODO
         ["dead"] = false,
       },
       config = {
