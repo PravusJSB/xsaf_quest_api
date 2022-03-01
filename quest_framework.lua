@@ -1,4 +1,4 @@
--- version: 0.4
+-- version: 0.45
 
 --[[
   Collapse this document to make it easier to digest.
@@ -25,11 +25,14 @@
 
   I have provided an example of how to use it below, and you should be able to see how i use the
   functions exposed in the API to get a reference on how to use them yourself too.
+
+  ALPHA Development: Whilst this is in early stages you may find my notes, comments, unfinished
+  things, unoptimised functions, methods, ideas... You will know it's ready when the version >= 1
 ]]
 
 -- XQF (XSAF Quest Framework) internal code
   -- global calls
-    -- call in useful API functions
+    -- call in useful API functions (required to use)
     local jsb_core = jsb.getCore() -- API call
     local say = jsb_core.say -- ingame global print
     local fstr = jsb_core.fstr -- string.format
@@ -39,7 +42,7 @@
     local do_not_save = DONOTSAVE -- is a global variable in my development build to stop data saving out
 
     local trigger_get_zone = trigger.misc.getZone -- DCS SSE func for getting a zone at runtime
-    local sZones = globalOptions.spawn.red.zRef -- a DB of zones which surround all bases in XSAF, key'd by base name
+    local sZones = globalOptions.spawn.red.zRef -- a DB of zones which surround all bases in XSAF, key'd by base name, comment out to load in this code
   --
 
   XQF = {} -- global quest framework container
@@ -260,11 +263,11 @@
 
         -- pass in the details of any statics to be spawned on start
         function xqm_interface:create_static_on_start(args)
-          if not self.start then
-            return self:log("Must set start conditions before defining statics")
-          end
+          -- if not self.start then
+          --   return self:log("Must set start conditions before defining statics")
+          -- end
           self.assets.static = deepCopy(args)
-          self.start.statics = true
+          -- self.start.statics = true
         end
 
         function xqm_interface:set_win_config(config)
@@ -328,10 +331,10 @@
         -- spawners
           -- statics
           function xqm:spawn_statics()
-            			for cargo, templates in pairs (self.drop_template or {}) do
-                  self.spawned[cargo] = {}
-                  for i = 1, #templates do
-                    self.spawned[cargo][#self.spawned[cargo]+1] = coalition.addStaticObject(self.drop_template[cargo][i].owner or 1, self.drop_template[cargo][i])
+            			for static, data in pairs (self.assets.static or {}) do
+                  self.spawned.static = {}
+                  for i = 1, self.assets.static[static].config.number_spawn do
+                    -- coalition.addStaticObject(self.drop_template[cargo][i].owner or 1, )
                     _log("CDM: spawned crate for object %s", self.name)
                   end
                 end
@@ -340,19 +343,19 @@
 
         -- in play spin
         function xqm:maintain()
-          -- delayed start
-          if self.start.delay_max then
-            timer.scheduleFunction(function() self:maintain() end, nil, _time(math.random( self.start.delay_min, self.start.delay_max )))
-            self.start.delay_max = nil
-            return
-          end
           if self.flag == 1 or self.flag == 8 or self.flag == 9 then
+            -- delayed start
+            if self.start.delay_max then
+              timer.scheduleFunction(function() self:maintain() end, nil, _time(math.random( self.start.delay_min, self.start.delay_max )))
+              self.start.delay_max = nil
+              return
+            end
             -- transition
             timer.scheduleFunction(function() self:maintain() end, nil, _time(xqc.config.first_maintain))
             -- start config action / execute
             -- spawn statics
-            if self.start.statics then
-              
+            if self.assets.static then
+              self:spawn_statics()
             end
             -- msg schedules
             if #self.msg_store > 0 then
