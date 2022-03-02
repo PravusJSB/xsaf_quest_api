@@ -241,6 +241,18 @@
           return self.flag
         end
 
+        -- replace the maintain function
+        -- return
+        function xqm_interface:replace_maintain(func)
+          --
+        end
+
+        -- add a custom trigger function inside the 'maintain' spin
+        -- return
+        function xqm_interface:maintain_trigger(func)
+          --
+        end
+
         -- used to pre schedule messages based on time
         -- time_to_display @number: screen display time
         -- msg @string: Lua standard format string type
@@ -322,6 +334,7 @@
             --     position = {}, -- TODO
             --     max_radius = 1000,
             --     min_radius = 0,
+            --     owner = 0,
             --   },
             --   conditions = {
             --     kill_all = true,
@@ -329,15 +342,29 @@
             -- }
 
         -- spawners
+          local function build_static(object_type, shape_name, position, object_name, mass, can_cargo)
+            return {
+              ["type"] = object_type,
+              ["name"] = object_name,
+              ["shape_name"] = shape_name,
+              ["x"] = position.x,
+              ["y"] = position.z,
+              ["dead"] = false,
+              ["mass"] = mass or nil,
+              ["canCargo"] = can_cargo or nil,
+              ["heading"] = math.random(359),
+            }
+          end
+
           -- statics
           function xqm:spawn_statics()
-            			for static, data in pairs (self.assets.static or {}) do
-                  self.spawned.static = {}
-                  for i = 1, self.assets.static[static].config.number_spawn do
-                    -- coalition.addStaticObject(self.drop_template[cargo][i].owner or 1, )
-                    _log("CDM: spawned crate for object %s", self.name)
-                  end
-                end
+            for static, data in pairs (self.assets.static or {}) do
+              self.spawned.static = {}
+              for i = 1, data.config.number_spawn do -- TODO, position data
+                self.spawned.static[#self.spawned.static+1] = coalition.addStaticObject(data.config.owner or 0, build_static(data.template.type, data.template.shape_name, data.config.position, static .. self.name .. i))
+                _log("Spawned static %s", data.template.type)
+              end
+            end
           end
         --
 
@@ -658,7 +685,7 @@
 
   example:set_null_config({
     msg = "Great work taking Bassel Al Assad - we're canceling the strike mission at the Baniyas Refinery",
-    fun = function()
+    fun = function(self)
       return (Airbase.getByName('Bassel Al-Assad') and (Airbase.getByName('Bassel Al-Assad'):getCoalition() == 2))
     end,
     delete_units = false,
