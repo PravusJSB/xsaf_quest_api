@@ -1,4 +1,4 @@
--- version: 0.45
+-- version: 0.5
 
 --[[
   Collapse this document to make it easier to digest.
@@ -81,7 +81,9 @@
   --
 
   -- Quest Class
-    XQC = {} -- global class container
+    XQC = {
+      trigger = {},
+    } -- global class container
 
     local xqm_interface = {} -- shared methods
     local xqmp = {} -- personal methods
@@ -556,6 +558,10 @@
             --
           end
         --
+
+        function xqm:reward()
+          
+        end
 
         function xqm:clean_up()
           --
