@@ -51,31 +51,48 @@
         -- unit_object @DCS_UNIT
         -- return: The velocity of the given unit in KPH
 
-        jmr.getKMH(unit_object)
+          jmr.getKMH(unit_object)
 
         ---- A way to specifically confirm if any blue object is in a given place
         -- vector @vector: 3D vector of search area
         -- radius @number: (optional) meters of search radius or if nil 7,500m
         -- category @number: (optional) DCS_Enum of object category
-        -- return @vector: position of the first unit found matching given variables or nil
+        -- return @vector3: position of the first unit found matching given variables or nil
 
-        jmr.findBlueUnit(vector, radius, object_category)
+          jmr.findBlueUnit(vector, radius, object_category)
 
         -- a point and a radius to use which will capture all of the mission AO
         -- you can use as the vector and radius for other functions if needed to search everywhere
+        -- return @vector3 and @number
 
-        jmr.mPoint, jmr.mRad
+          jmr.mPoint, jmr.mRad
         
         ---- The DCS search area structure returned to use in your own custom search functions
         -- point @vector: (optional) search point, defaults to jmr.mPoint
         -- radius @number: (optional) radius of search area, defaults to jmr.mRad
         -- volume_type @DCS_Enum: (optional) type of search, defaults to world.VolumeType.SPHERE
+        -- return @table: Search area structure
 
-        jmr.search_area(point, radius, volume_type)
+          jmr.search_area(point, radius, volume_type)
+
+        ---- A DCS search area function wrapper with overloaded args, a better solution below if only want to search
+        -- zone_area @string or @vector: if its a string it assumes its part of an internal database or zones, else pass in a vector/point table.
+        -- item_type @DCS_Enum: 
+        -- item_name @string (optional): if looking for a specific object supply a name
+        -- delete @bool (optional): if you want to delete what you find, use true
+        -- search_size @number: radius from the point to define search area
+        -- return @bool/@string (typename of object found)
+
+          jmr.areaSearch(zone_area, item_type, item_name, delete, search_size)
 
         ----
 
-        jmr.getPlayers
+        ---- Find players at a given location
+        -- vector @vector3 (optional): if none given then use mPoint by default
+        -- area @number (optional): if none given then use mRad by default
+        -- return @array: all DCS_Units found of player type in the params given
+
+          jmr.getPlayers(vector, area)
         
         ----
         
