@@ -38,6 +38,10 @@
     local fstr = jsb_core.fstr -- string.format
     local deepCopy = jsb_core.deepCopy -- copy func
     local __log = jsb.log -- custom dcs.log output
+    local jmr = aiMed.fun.getJMR()
+
+    -- future use funcs
+    local validity_search
 
     local do_not_save = DONOTSAVE -- is a global variable in my development build to stop data saving out
 
@@ -102,7 +106,7 @@
         end
       --
 
-      -- coslition
+      -- coalition
         -- global msg out
         -- fmt @string: Lua standard string format
         -- ... @vararg of any args for the string
@@ -322,6 +326,7 @@
           end
         end
 
+            -- TODO, what if there are more than one site, for now assume all assets are in one place, need to refactor to allow for site indexing
             -- fuel_tanks = {
             --   template = {
             --     category = "Fortifications",
@@ -335,13 +340,42 @@
             --     max_radius = 1000,
             --     min_radius = 0,
             --     owner = 0,
+            --     site_index = 1,
             --   },
             --   conditions = {
             --     kill_all = true,
+            --     kill_some = 0,
             --   },
             -- }
 
         -- spawners
+          local function find_spawn_point(search_area, max_distance, min_distance, safe_area)
+            if not validity_search then validity_search = jmr.areaSearch end
+            local spot_found, random_point, idx = nil, nil, 0
+            local item_type = { 3, 5 }
+            -- WARNING
+              repeat
+                idx = idx + 1
+                random_point = jmr.randomPoint(search_area, max_distance, min_distance)
+                if random_point then
+                  local surface_check = land.getSurfaceType({ x = random_point.x, y = random_point.z })
+                  if surface_check and (surface_check ~= land.SurfaceType.WATER and surface_check ~= land.SurfaceType.SHALLOW_WATER) then
+                    for i = 1, 2 do
+                      if validity_search(random_point, item_type[i], nil, nil, safe_area) then
+                        break
+                      end
+                      if i > 1 then spot_found = true end
+                    end
+                  end
+                end
+              until (spot_found or (idx >= 580))
+            --
+            if not spot_found then
+              _log("No spawn spot found")
+              return
+            end
+          end
+
           local function build_static(object_type, shape_name, position, object_name, mass, can_cargo)
             return {
               ["type"] = object_type,
@@ -358,47 +392,133 @@
 
           -- statics
           function xqm:spawn_statics()
+            self.spawned.static = {}
+            self.spawned.totals.static = 0
             for static, data in pairs (self.assets.static or {}) do
-              self.spawned.static = {}
+              local max, min, safe = 100, 40, 70
+              -- first site 'placement'
+              if not self.reference_position then
+                data.config.position = jmr.randomPoint(data.config.position, data.config.max_radius, data.config.min_radius)
+                self.reference_position = data.config.position
+              end
+              if not self.last_spawn_spot then max, min = nil, nil end
+              local spawn_spot = find_spawn_point(self.last_spawn_spot or self.reference_position, max or 500, min or 0, safe)
+              if not spawn_spot then self:log("Error finding spawn site !") return end
+              self.last_spawn_spot = spawn_spot
               for i = 1, data.config.number_spawn do -- TODO, position data
-                self.spawned.static[#self.spawned.static+1] = coalition.addStaticObject(data.config.owner or 0, build_static(data.template.type, data.template.shape_name, data.config.position, static .. self.name .. i))
-                _log("Spawned static %s", data.template.type)
+                local static_object = coalition.addStaticObject(data.config.owner or 0, build_static(data.template.type, data.template.shape_name, self.last_spawn_spot, static .. self.name .. i))
+                if static_object then
+                  self.spawned.static[static][#self.spawned.static+1] = {
+                    static_object,
+                    static_object:getName(),
+                  }
+                  self.spawned.totals.static = self.spawned.totals.static + 1
+                  self:log("Spawned static %s", data.template.type)
+                end
               end
             end
+            return true
           end
         --
 
-        -- in play spin
-        function xqm:maintain()
+        -- init
+        function xqm:init()
           if self.flag == 1 or self.flag == 8 or self.flag == 9 then
             -- delayed start
             if self.start.delay_max then
-              timer.scheduleFunction(function() self:maintain() end, nil, _time(math.random( self.start.delay_min, self.start.delay_max )))
+              timer.scheduleFunction(function() self.flag = 8 self:maintain() end, nil, _time(math.random( self.start.delay_min, self.start.delay_max )))
               self.start.delay_max = nil
+              self.flag = 10
+              return true
+            end
+            -- start config action / execute
+
+            -- spawn statics
+            if self.assets.static and self:spawn_statics() then
+              -- msg schedules
+              if #self.msg_store > 0 then
+                for i = 1, #self.msg_store do
+                  timer.scheduleFunction(function() self:msg(fstr(self.msg_store[i][2], self.msg_store[i][3])) end, nil, _time(self.msg_store[i][1]))
+                end
+              end
+              -- TODO spawn other objects
+              -- start msg
+              self:msg(self.start.msg)
+              self.flag = 2
+            elseif self.assets.static then
+              -- error in creating the site...
               return
             end
-            -- transition
-            timer.scheduleFunction(function() self:maintain() end, nil, _time(xqc.config.first_maintain))
-            -- start config action / execute
-            -- spawn statics
-            if self.assets.static then
-              self:spawn_statics()
-            end
-            -- msg schedules
-            if #self.msg_store > 0 then
-              for i = 1, #self.msg_store do
-                timer.scheduleFunction(function() self:msg(fstr(self.msg_store[2], self.msg_store[3])) end, nil, _time(self.msg_store[1]))
-              end
-            end
+
+            -- transition to start
+            timer.scheduleFunction(function()
+              self.flag = 2 -- started the quest
+              self:maintain()
+            end, nil, _time(xqc.config.first_maintain))
             return
           elseif self.flag == 10 then -- already scheduled, with delayed start
-            return
+            return true
           end
+        end
+
+        local function static_deaths(statics)
+          local count = 0
+          for shape, array in pairs (statics) do
+            for i = 1, #array do
+              if not StaticObject.getByName(array[i][2]) or (StaticObject.getByName(array[i][2]) and (StaticObject.getByName(array[i][2]):getLife() < 3)) then
+                count = count + 1
+                -- shall we remove from the array??
+              end
+            end
+          end
+          return count
+        end
+
+        -- in play spin
+        function xqm:maintain()
+          -- state transitions
+            if self.flag == 7 then
+              -- stopped on error
+              -- TODO remove, dump data?
+            elseif self.flag == 3 then -- fail
+              -- fail condition
+              -- TODO
+              self:run_fail()
+              return
+            elseif self.flag == 4 then -- win
+              -- win condition
+              -- TODO
+              self:run_win()
+              return
+            elseif self.flag == 5 then -- null
+              -- null condition
+              -- TODO
+              self:run_null()
+              return
+            elseif self.flag ~= 2 then
+              if not self:init() then
+                -- error in init
+                self.flag = 7
+              end
+            end
+          --
+          -- normal schedule callback
+          timer.scheduleFunction(function() self:maintain() end, nil, _time(self.maintain_time))
+          -- check run time
           if self.to_remove or (self.max_time < _time()) then
             -- quest should now be removed
+            self.flag = 3
             return
           end
-          timer.scheduleFunction(function() self:maintain() end, nil, _time(self.maintain_time))
+          -- trigger checks
+          if self.quest_type == 2 then -- static kill
+            local deaths = static_deaths(self.spawned.static)
+            if deaths == self.spawned.totals.static then
+              -- win condition
+              self.flag = 4
+              return
+            end
+          end
         end
 
         function xqm:get_flag()
@@ -421,6 +541,28 @@
           -- start on timer
           -- trigger condition
           -- time dealys / pass to maintain
+        end
+
+        -- end execution methods
+          function xqm:run_fail()
+            --
+          end
+
+          function xqm:run_win()
+            --
+          end
+
+          function xqm:run_nul()
+            --
+          end
+        --
+
+        function xqm:clean_up()
+          --
+        end
+
+        function xqm:remove()
+          self:clean_up()
         end
       --
 
@@ -531,7 +673,9 @@
         completion = {},
         failure = {},
         assets = {},
-        spawned = {},
+        spawned = {
+          totals = {},
+        },
         repeatable_config = {
           repeatable = false,
           reboot_reset = true,
@@ -638,9 +782,9 @@
       },
       config = {
         number_spawn = 40,
-        position = {},
-        max_radius = 1000,
-        min_radius = 0,
+        position = Airbase.getByName('Bassel Al-Assad'):getPoint(),
+        max_radius = 6000,
+        min_radius = 2000,
       },
       conditions = {
         kill_all = true,
