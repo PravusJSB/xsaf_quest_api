@@ -37,7 +37,7 @@
     local say = jsb_core.say -- ingame global print
     local fstr = jsb_core.fstr -- string.format
     local deepCopy = jsb_core.deepCopy -- copy func
-    local __log = jsb.log -- custom dcs.log output
+    local __log = jsb_core.log -- custom dcs.log output
     local jmr = aiMed.fun.getJMR()
 
     -- future use funcs
@@ -133,8 +133,9 @@
         -- fun @funciton (optional): can be used to inject a custom function on start
         -- event_id @DCS_Enum: the event id that will trigger quest to start
         -- delays @number/@table (optional): if number then quest starts event + delay, if table { min = n (optoinal), max = n } then will be random time min/max if just max then random 0-max
+        -- TODO: args...
         -- return: nil
-        function xqmc:add_start_hook(event_id, fun, delays, msg)
+        function xqmc:add_start_hook(event_id, fun, delays, msg, args)
           if not self.start then self.start = {} end
           self.start.start_func = fun or nil
           self.start.hook_event = event_id or nil
@@ -145,6 +146,13 @@
             self.start.delay_min = delays
           end
           if msg and not self.start.msg then self.start.msg = msg end
+          if args then
+            self.start.non_trigger = {
+              from_reboot = args.reboot_start,
+              delay_after_reboot = args.reboot_delay,
+              random_start = args.boot_random,
+            }
+          end
         end
 
         -- adds a delay config to the start conditions
@@ -820,7 +828,7 @@
 
   -- add a hook to trigger the quest start
 
-  example:add_start_hook(10, nil, {min = 300, max = 1200})
+  example:add_start_hook(10, nil, {min = 300, max = 1200}, { reboot_start = true, reboot_delay = {min = 3600, max = 12000}, boot_random = 35 })
 
   -- setup the static objects used for the kill goal
 
@@ -901,6 +909,92 @@
   })
 
   example:start_quest()
+
+  -- example return structure of object after code executed
+    -- {
+    --   ["assets"] = table: 0000001C489894F0     {
+    --       ["static"] = table: 0000001C4972A290         {
+    --           ["fuel_tanks"] = table: 0000001C49729750             {
+    --               ["config"] = table: 0000001C4972A0B0                 {
+    --                   ["number_spawn"] = 5,
+    --                   ["position"] = table: 0000001C4972A6A0                     {
+    --                       },
+    --                   ["max_radius"] = 1000,
+    --                   ["owner"] = 0,
+    --                   ["min_radius"] = 0,
+    --                   ["site_index"] = 1,
+    --                   },
+    --               ["template"] = table: 0000001C4972A4C0                 {
+    --                   ["shape_name"] = "kazarma2",
+    --                   ["type"] = "Barracks 2",
+    --                   ["category"] = "Fortifications",
+    --                   ["dead"] = false,
+    --                   },
+    --               ["conditions"] = table: 0000001C4972A100                 {
+    --                   ["kill_all"] = true,
+    --                   ["kill_some"] = 0,
+    --                   },
+    --               },
+    --           },
+    --       },
+    --   ["time_start"] = 0,
+    --   ["plyr_debug"] = "Brodie",
+    --   ["flag"] = 0,
+    --   ["completion"] = table: 0000001C49729E30     {
+    --       ["red_impact"] = table: 0000001C4972A740         {
+    --           ["gce_pct"] = 50,
+    --           ["impact"] = 1,
+    --           },
+    --       ["msg"] = "Great work! The Baniyas refinery has been neutralized and we're already noticing fewer departures from nearby red force bases.",
+    --       ["intel_points"] = 50,
+    --       ["reward"] = 1,
+    --       },
+    --   ["msg_store"] = table: 0000001C489893B0     {
+    --       [1] = table: 0000001C4972A6F0         {
+    --           [1] = 1800,
+    --           [2] = "you have 60 minutes to destroy the Baniyas refinery (N35 13 00 E35 58 00)",
+    --           },
+    --       [2] = table: 0000001C49729AC0         {
+    --           [1] = 3600,
+    --           [2] = "you have 30 minutes to destroy the Baniyas refinery (N35 13 00 E35 58 00)",
+    --           },
+    --       [3] = table: 0000001C4972A2E0         {
+    --           [1] = 4800,
+    --           [2] = "you have 10 minutes to destroy the Baniyas refinery (N35 13 00 E35 58 00)",
+    --           },
+    --       },
+    --   ["quest_type"] = 2,
+    --   ["null_config"] = table: 0000001C48989F90     {
+    --       ["unit_behaviour"] = 1,
+    --       ["del_units"] = false,
+    --       ["del_stat"] = true,
+    --       ["msg"] = "Great work taking Bassel Al Assad - we're canceling the strike mission at the Baniyas Refinery",
+    --       ["func"] = "function: 0000001C48B362E0, defined in (856-858)",
+    --       },
+    --   ["run_time"] = 5400,
+    --   ["name"] = "ExampleQuest",
+    --   ["tick"] = 0,
+    --   ["start"] = table: 0000001C49729890     {
+    --       ["delay_min"] = 300,
+    --       ["delay_max"] = 1200,
+    --       ["hook_event"] = 10,
+    --       },
+    --   ["repeatable_config"] = table: 0000001C4972A380     {
+    --       ["reboot_reset"] = false,
+    --       ["min_time"] = 0,
+    --       ["repeatable"] = true,
+    --       },
+    --   ["spawned"] = table: 0000001C48989720     {
+    --       ["totals"] = table: 0000001C48989860         {
+    --           },
+    --       },
+    --   ["failure"] = table: 0000001C489894A0     {
+    --       ["del_stat"] = true,
+    --       ["msg"] = "It's too late - Red Force knows what were up to at Baniyas and has resupplied by other means. The refinery strike mission is cancelled.",
+    --       ["del_units"] = true,
+    --       },
+    --   }
+  --
 --
 
 -- Quest example 2
