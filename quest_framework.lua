@@ -1,4 +1,4 @@
--- version: 0.5
+-- version: 0.50
 
 --[[
   Collapse this document to make it easier to digest.
@@ -92,6 +92,18 @@
 
     function XQC.getDB()
       return xqc
+    end
+
+    local function is_quest_active(quest_name)
+      if not quest_name then return end
+      local quests = { xqmp, xqmc }
+      for i = 1, 2 do
+        for j = 1, #quests[i] do
+          if (quest_name == quests[i][j].name) then
+            return quests[i][j].flag == 2
+          end
+        end
+      end
     end
 
     -- methods
@@ -308,46 +320,68 @@
           self.failure.unit_behaviour = config.unit_behaviour
         end
 
-        -- pass in a custom function to watch for the start trigger
-        -- no need to use any callbacks in your code
+        -- pass in a custom function to watch for the start trigger or in addition to
+        -- no need to use any callbacks in your code, pass in self as the 1st arg
+        -- only_custom @bool (optional): pass true to bypass all framework code from maintain
         -- return: nil
-        function xqm_interface:set_custom_spin(fun)
+        function xqm_interface:set_custom_spin(fun, only_custom)
           self.spin_func = fun
+          self.spin_exlusive = only_custom -- flag to only use your code in this state
+        end
+
+        -- pass in a custom function to use before any triggers are looked for
+        -- no need to use any callbacks in your code, pass in self as the 1st arg
+        -- only_custom @bool (optional): pass true to bypass all framework code from maintain
+        -- return: nil
+        function xqm_interface:set_custom_start(fun, only_custom)
+          self.start.start_func = fun
+          self.start.start_exlusive = only_custom -- flag to only use your code in this state
+        end
+
+        -- pass in a custom function to use before any triggers are looked for
+        -- no need to use any callbacks in your code, pass in self as the 1st arg
+        -- periodicity @number (optional): ratio of your runtaime vs framwork, e.g. 1:2 pass 2 and yours runs every other time including framework
+        -- only_custom @bool (optional): pass true to bypass all framework code from maintain
+        -- return: nil
+        function xqm_interface:set_custom_maintain(fun, periodicity, only_custom)
+          self.maintian_func = fun
+          self.maintain_custom_run = periodicity
+          self.maintain_exlusive = only_custom -- flag to only use your code in this state
         end
       --
 
       -- backend methods (shared)
         -- TODO
         function xqm:verify_structure()
-          if not self.repeatable_config then
+          if not self.repeatable_config then -- redundant
             return self:log("Cannot start quest because no repeatable config is set.")
           elseif not self.start then
             return self:log("Cannot start quest because no start config is set.")
-          elseif not self.run_time and not self.completion.end_trigger then
-            return self:log("Must have a run time or end trigger")
+          elseif not (self.run_time) then
+            return self:log("Must have a run time")
           end
         end
 
             -- TODO, what if there are more than one site, for now assume all assets are in one place, need to refactor to allow for site indexing
-            -- fuel_tanks = {
-            --   template = {
-            --     category = "Fortifications",
-            --     shape_name = "kazarma2", -- TODO
-            --     type = "Barracks 2", -- TODO
-            --     dead = false,
-            --   },
-            --   config = {
-            --     number_spawn = 5,
-            --     position = {}, -- TODO
-            --     max_radius = 1000,
-            --     min_radius = 0,
-            --     owner = 0,
-            --     site_index = 1,
-            --   },
-            --   conditions = {
-            --     kill_all = true,
-            --     kill_some = 0,
-            --   },
+              -- fuel_tanks = {
+              --   template = {
+              --     category = "Fortifications",
+              --     shape_name = "kazarma2", -- TODO
+              --     type = "Barracks 2", -- TODO
+              --     dead = false,
+              --   },
+              --   config = {
+              --     number_spawn = 5,
+              --     position = {}, -- TODO
+              --     max_radius = 1000,
+              --     min_radius = 0,
+              --     owner = 0,
+              --     site_index = 1,
+              --   },
+              --   conditions = {
+              --     kill_all = true,
+              --     kill_some = 0,
+              --   },
             -- }
 
         -- spawners
@@ -440,7 +474,9 @@
               -- msg schedules
               if #self.msg_store > 0 then
                 for i = 1, #self.msg_store do
-                  timer.scheduleFunction(function() self:msg(fstr(self.msg_store[i][2], self.msg_store[i][3])) end, nil, _time(self.msg_store[i][1]))
+                  timer.scheduleFunction(function()
+                    if is_quest_active(self.name) then self:msg(fstr(self.msg_store[i][2], self.msg_store[i][3])) end
+                  end, nil, _time(self.msg_store[i][1]))
                 end
               end
               -- TODO spawn other objects
@@ -479,7 +515,7 @@
         -- in play spin
         function xqm:maintain()
           -- state transitions
-            if self.flag == 7 then
+            if self.flag == 7 then -- error stop
               -- stopped on error
               -- TODO remove, dump data?
             elseif self.flag == 3 then -- fail
@@ -512,6 +548,16 @@
             self.flag = 3
             return
           end
+          -- custom maintain funcs
+          self.tick = self.tick + 1
+          if self.maintain_func then
+            if self.maintain_exlucsive then
+              return self.maintain_func(self)
+            elseif self.maintain_periodicy and ((self.tick % self.maintain_periodicy) == 0) then
+              if not self.maintain_func(self) then self.maintain_func = nil self:log("Error running custom maintain func, remove func") end
+            end
+          end
+          -- customer trigger
           -- trigger checks
           if self.quest_type == 2 then -- static kill
             local deaths = static_deaths(self.spawned.static)
@@ -564,7 +610,8 @@
         end
 
         function xqm:clean_up()
-          --
+          -- clean up any alive units/statics
+          -- remove any menus, coalition, player
         end
 
         function xqm:remove()
@@ -660,12 +707,12 @@
         time_start = 0,
         quest_type = setup.quest_type,
         flag = 0,
-        -- optional args at setup, may need to be added later by implicit method call
+        tick = 0,
           -- run_time = setup.run_time or nil,
           -- spin_time = setup.spin_time or nil,
           -- maintain_time = setup.maintain_time or xqc.config.maintain_time,
-          spin_func = setup.spin_fun or nil,
-          start = nil,
+        spin_func = setup.spin_fun or nil,
+        start = nil,
           -- {
           --   start_func = nil, -- custom start func
           --   msg = nil,
@@ -673,7 +720,6 @@
           --   hook_event = nil,
           --   delay_min/max
           -- },
-        --
         msg_store = {},
         null_config = {},
         completion = {},
@@ -781,19 +827,22 @@
   example:create_static_on_start({
     fuel_tanks = {
       template = {
-        ["category"] = "Fortifications",
-        ["shape_name"] = "kazarma2", -- TODO
-        ["type"] = "Barracks 2", -- TODO
-        ["dead"] = false,
+        category = "Fortifications",
+        shape_name = "kazarma2", -- TODO
+        type = "Barracks 2", -- TODO
+        dead = false,
       },
       config = {
-        number_spawn = 40,
-        position = Airbase.getByName('Bassel Al-Assad'):getPoint(),
-        max_radius = 6000,
-        min_radius = 2000,
+        number_spawn = 5,
+        position = {}, -- TODO
+        max_radius = 1000,
+        min_radius = 0,
+        owner = 0,
+        site_index = 1,
       },
       conditions = {
         kill_all = true,
+        kill_some = 0,
       },
     },
   })
@@ -835,7 +884,7 @@
 
   example:set_null_config({
     msg = "Great work taking Bassel Al Assad - we're canceling the strike mission at the Baniyas Refinery",
-    fun = function(self)
+    fun = function(self) -- always pass self into your own functions, this represents the class and will work when i insert
       return (Airbase.getByName('Bassel Al-Assad') and (Airbase.getByName('Bassel Al-Assad'):getCoalition() == 2))
     end,
     delete_units = false,
@@ -852,4 +901,38 @@
   })
 
   example:start_quest()
+--
+
+-- Quest example 2
+  --Repeating Quest
+
+  --// Intercept cargo ship(s)
+  --// Skynet needs resuplies by land, air and sea. Heavy equipment from foreign weapon suppliers are always transported by sea
+  --// WSC (World Safety Council) decided to declare an embargo for 1 or more Banned Harbours (not using countries to stay out of politics)
+  --// Players are able to influence the logistic effectivness of Skynet. As in: supplies run out, skynet can't deploy it any more 
+  --// Delivered goods initiate cargo quests from the harbour to red Airbases by helo of cargo plane (if airstrip is nearby)
+  --// Cargo ships are persistent
+
+  --// Player rewards: sense of influnece, showing added value, increasing skill, credits 
+  -- qeust_input = {NumBluePlayers = 0, CurrentRedAirbases = {}, SupplierHarbours = {}, BannedHarbours = {}, RouteThroughSectors = {}, CargoShip = {}, ...}
+
+  --//set up units in demand with input from Logistic Commander
+
+  --//Set up logic to create supply routes
+    --// Which airbases are red and add them to CurrentRedAirbases --> Which Harbour is the nearest and add to SupplierHarbours --> Choose random supplier harbour and add to SupplierHarbours
+    --// Check number of available BlueFor players and edit NumBluePlayers 
+    
+  --//Spawn units, set routes
+    --//For each 5 Blue Players create a quest 
+    --//Routes follow direct path from SupplierHarbour to Main Sea lane and nearby the destination the direct path to the BannedHarbour
+    --//check which sector the routes are crossing and add them to RouteThroughSectors
+    
+    -- local start_msg = "The WSC (Word Safety Council) has responded to latest actions of Skynet.\n\n They decided to declare a weapon embargo by sea for the following harbours:\n\n"..BannedHarbours.."\n\n Intercept any cargo ships in sectors:\n\n"..RouteThroughSectors) --repeat this global messeage each hour
+    
+    --//Quest success
+    --//For each destroyed cargo ship create a new quest (if still enough Blue Players online)
+    --// Update CargoShip
+    --//Player in moving zone around CargoShip and event(hit) and unit destroyed = 500 (?) credit score  
+
+    -- local player_msg = "You've have succesfully destroyed a cargo ship, weakend skynet and executed the WSC weapon embargo!"
 --
