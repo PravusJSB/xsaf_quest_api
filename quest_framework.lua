@@ -635,29 +635,39 @@
         end
 
         -- end execution methods
+          function xqm:give_reward()
+            -- TODO
+          end
+          
+          function xqm:make_impact()
+            -- TODO
+          end
+
           function xqm:run_fail()
-            --
+            -- TODO
           end
 
           function xqm:run_win()
-            --
+            -- TODO
+            self:msg(self.completion.msg)
+            self:give_reward()
+            self:make_impact()
+            self:remove()
           end
 
-          function xqm:run_nul()
-            --
+          function xqm:run_null()
+            -- TODO
           end
         --
 
-        function xqm:reward()
-          
-        end
-
         function xqm:clean_up()
+            -- TODO
           -- clean up any alive units/statics
           -- remove any menus, coalition, player
         end
 
         function xqm:remove()
+            -- TODO
           self:clean_up()
         end
       --
