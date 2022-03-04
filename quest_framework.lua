@@ -37,6 +37,7 @@
     local say = jsb_core.say -- ingame global print
     local fstr = jsb_core.fstr -- string.format
     local deepCopy = jsb_core.deepCopy -- copy func
+    local shallowCopy = jsb_core.shallowCopy -- copy func
     local __log = jsb_core.log -- custom dcs.log output
     local jmr = aiMed.fun.getJMR()
 
@@ -81,7 +82,7 @@
   --
 
   -- data saving and recovery
-    local shallowCopy = jsb_core.shallowCopy
+    --
   --
 
   -- Quest Class
@@ -151,8 +152,13 @@
         -- return: nil
         function xqmc:add_start_hook(event_id, fun, delays, msg, args)
           if not self.start then self.start = {} end
+          if not args then args = {} end
           self.start.start_func = fun or nil
           self.start.hook_event = event_id or nil
+          if event_id == 10 then
+            self.start.base_name_trigger = args.base
+            self.start.base_owner = args.owned_by
+          end
           if delays and type(delays) == 'table' then
             self.start.delay_min = delays.min
             self.start.delay_max = delays.max
@@ -165,6 +171,7 @@
               from_reboot = args.reboot_start,
               delay_after_reboot = args.reboot_delay,
               random_start = args.boot_random,
+              condition_func = args.cond_fun,
             }
           end
         end
@@ -237,7 +244,7 @@
         function xqm_interface:start_quest()
           if self:verify_structure() then
             -- dont callback if flag 8 or manual start
-            if self.start.hook_event then
+            if self.start.hook_event and self:valid_hook() then
               return self:inc(8)
             end
             -- start the quest spinning
@@ -320,12 +327,12 @@
           -- if not self.start then
           --   return self:log("Must set start conditions before defining statics")
           -- end
-          self.assets.static = deepCopy(args)
+          self.assets.static = shallowCopy(args)
           -- self.start.statics = true
         end
 
         function xqm_interface:set_win_config(config)
-          self.completion = deepCopy(config)
+          self.completion = shallowCopy(config)
         end
 
         function xqm_interface:set_null_config(config)
@@ -385,6 +392,15 @@
             return self:log("Must have a run time")
           end
           return true
+        end
+
+        -- validate the hook type against any args
+        function xqm:valid_hook(event)
+          if self.start.hook_event == 10 and (self.start.hook_func or self.start.base_name_trigger) then
+            return true
+          elseif (event and self.start.hook_event == 10 and self.start.base_name_trigger) and (event.initiator and event.initiator:getName() == self.start.base_name_trigger and event.initiator:getCoalition() == self.start.base_onwer) then
+            return true
+          end
         end
 
             -- TODO, what if there are more than one site, for now assume all assets are in one place, need to refactor to allow for site indexing
@@ -601,6 +617,13 @@
           -- customer trigger
           -- fail check
           -- null check
+          if self.null_config.func and self.null_config.func(self) then
+            -- null triggered
+            self.flag = 5
+            self:log("State set to null")
+            self:msg(self.null_config.msg)
+            return
+          end
           -- trigger checks
           if self.quest_type == 2 then -- static kill
             local deaths = static_deaths(self.spawned.static)
@@ -657,6 +680,10 @@
 
           function xqm:run_null()
             -- TODO
+                -- self.null_config.del_units = config.delete_units
+                -- self.null_config.del_stat = config.delete_statics
+                -- self.null_config.unit_behaviour = config.unit_behaviour
+            self:remove()
           end
         --
 
@@ -810,17 +837,38 @@
       if not event or (xqc.idx < 1) then return end
       for quest_name, quest in pairs (xqc.coalition) do
         if quest:get_flag() == 8 and (event.id and quest.start.hook_event == event.id) then
-          if not quest.start.hook_func or (quest.start.hook_func and quest.start.hook_func(quest)) then
+          if (not quest.start.hook_func and quest:valid_hook(event)) or (quest.start.hook_func and quest.start.hook_func(quest)) then
             quest:maintain()
             quest:log("Hook event fired and maintain started")
           end
         end
       end
     end
+    
+    local quest_logs = { xqmc, xqmp }
 
     -- for recall of quest, by manual start or start from elsewehere
-    function XQF.getQuest(quest_name, args)
-      --
+    function XQF.getQuest(name, args)
+      for i = 1, 2 do
+        for quest_name, quest in pairs (quest_logs[i]) do
+          if quest_name == name then
+            return quest
+          end
+        end
+      end
+    end
+
+    -- for recall of quest, by manual start or start from elsewehere
+    function XQF.getAuthor(player_name)
+      local quests = {}
+      for i = 1, 2 do
+        for quest_name, quest in pairs (quest_logs[i]) do
+          if quest.author and quest.author == player_name then
+            quests[#quests+1] = quest_name
+          end
+        end
+      end
+      return quests
     end
   --
 --
@@ -876,7 +924,7 @@
 
   -- add a hook to trigger the quest start
 
-  example:add_start_hook(10, nil, {min = 2, max = 10}, { reboot_start = true, reboot_delay = {min = 3600, max = 12000}, boot_random = 35 })
+  example:add_start_hook(10, nil, {min = 2, max = 10}, { reboot_start = true, reboot_delay = {min = 3600, max = 12000}, boot_random = 35, base = "Bassel Al-Assad", owned_by = 1 })
 
   -- setup the static objects used for the kill goal
 
