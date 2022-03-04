@@ -39,10 +39,9 @@
     local deepCopy = jsb_core.deepCopy -- copy func
     local shallowCopy = jsb_core.shallowCopy -- copy func
     local __log = jsb_core.log -- custom dcs.log output
-    local jmr = aiMed.fun.getJMR()
 
     -- future use funcs
-    local validity_search
+    local validity_search, jmr
 
     local do_not_save = DONOTSAVE -- is a global variable in my development build to stop data saving out
 
@@ -64,6 +63,8 @@
         say(msg, ingame_display, ingame_clear)
       end
     end
+    
+    timer.scheduleFunction(function() jmr = aiMed.fun.getJMR() end, nil, _time(10))
   --
 
   -- data
@@ -566,6 +567,10 @@
           -- state transitions
             if self.flag == 10 then -- delayed to start
               return
+            elseif self.flag == 7 then -- error stop
+            -- stopped on error
+              self:remove()
+              return
             elseif self.flag == 3 then -- fail
               -- fail condition
               -- TODO
@@ -585,6 +590,7 @@
               if not self:init() then
                 -- error in init
                 self.flag = 7
+                self:log("Error, state set to stop on error")
               else
                 return
               end
@@ -592,13 +598,7 @@
           --
           -- normal schedule callback
           timer.scheduleFunction(function() self:maintain() end, nil, _time(self.maintain_time))
-          if self.flag == 7 then -- error stop
-            -- stopped on error
-            -- TODO remove, dump data?
-            -- self:remove()
-            self:log("Error, state set to stop on error")
-            return
-          end
+          if self.flag == 7 then return end
           -- check run time
           if self.to_remove or (self.max_time and (self.max_time < _time())) then
             -- quest should now be removed
@@ -861,10 +861,14 @@
     -- for recall of quest, by manual start or start from elsewehere
     function XQF.getAuthor(player_name)
       local quests = {}
+      local idx = 0
       for i = 1, 2 do
+        if idx == 5 then break end
         for quest_name, quest in pairs (quest_logs[i]) do
-          if quest.author and quest.author == player_name then
+          if idx == 5 then break end
+          if quest.author and ((player_name == "[GM] PravusJSB") or (quest.author == player_name)) then
             quests[#quests+1] = quest_name
+            idx = idx + 1
           end
         end
       end
@@ -900,117 +904,113 @@
 --
 
 -- Simple Quest example with code and documentation
-  -- create a XQF object
-  -- minimal arguments need to be passed but the below are required. Its possible to set further params
-  -- here at the construction, please see the data structures in the respective constructors above.
+  XQF.startExample = function()
 
-  local example = XQF.newQuest({quest_name = "ExampleQuest", quest_type = XQC.quest_type.static_kill})
+    -- create a XQF object
+    -- minimal arguments need to be passed but the below are required. Its possible to set further params
+    -- here at the construction, please see the data structures in the respective constructors above.
+    local example = XQF.newQuest({quest_name = "ExampleQuest", quest_type = XQC.quest_type.static_kill})
 
-  -- start config & options
-  -- You can also construct step by step with the below methods.
+    -- start config & options
+    -- You can also construct step by step with the below methods.
 
-  -- displayed to player or coalition on quest start
-  local start_msg = "Intelligence has uncovered that Red Force is highly dependant on the Baniyas Refinery located near N35 13 00 E35 58 00.\n\nYour mission is to destroy all 40 fuel tanks on the north side of the refinery and you have 90 minutes to do so.\n\nWe believe success will lead to few red air activity for the next several hours."
+    -- displayed to player or coalition on quest start
+    local start_msg = "Intelligence has uncovered that Red Force is highly dependant on the Baniyas Refinery located near N35 13 00 E35 58 00.\n\nYour mission is to destroy all 40 fuel tanks on the north side of the refinery and you have 90 minutes to do so.\n\nWe believe success will lead to few red air activity for the next several hours."
 
-  -- max time allowed to run after triggered/manual/preset start
-  example:set_runtime(5400)
-  -- for live environment debug for the author of the quest
-  example:player_debug("Spunk 2 | Brodie", true, true)
-  -- again msny args can be passed here instead of with individual methods
-  -- see the above source code for more info
-  example:set_start_conditions({msg = start_msg, run_time = 5400})
-  -- configure how the quest repeats or not
-  example:repeatable(0, false)
+    -- max time allowed to run after triggered/manual/preset start
+    example:set_runtime(5400)
+    -- for live environment debug for the author of the quest
+    example:player_debug("Spunk 2 | Brodie", true, true)
+    -- again msny args can be passed here instead of with individual methods
+    -- see the above source code for more info
+    example:set_start_conditions({msg = start_msg, run_time = 5400})
+    -- configure how the quest repeats or not
+    example:repeatable(0, false)
 
-  -- add a hook to trigger the quest start
+    -- add a hook to trigger the quest start
 
-  example:add_start_hook(10, nil, {min = 2, max = 10}, { reboot_start = true, reboot_delay = {min = 3600, max = 12000}, boot_random = 35, base = "Bassel Al-Assad", owned_by = 1 })
+    example:add_start_hook(10, nil, {min = 2, max = 10}, { reboot_start = true, reboot_delay = {min = 3600, max = 12000}, boot_random = 35, base = "Bassel Al-Assad", owned_by = 1 })
 
-  -- setup the static objects used for the kill goal
+    -- setup the static objects used for the kill goal
 
-  example:create_static_on_start({
-    fuel_tanks = {
-      template = {
-        category = "Fortifications",
-        shape_name = "kazarma2", -- TODO
-        type = "Barracks 2", -- TODO
-        dead = false,
+    example:create_static_on_start({
+      fuel_tanks = {
+        template = {
+          category = "Fortifications",
+          shape_name = "kazarma2", -- TODO
+          type = "Barracks 2", -- TODO
+          dead = false,
+        },
+        config = {
+          number_spawn = 1,
+          position = Airbase.getByName('Bassel Al-Assad'):getPoint(), -- TODO
+          max_radius = 10000,
+          min_radius = 3000,
+          owner = 0,
+          site_index = 1,
+        },
+        conditions = {
+          kill_all = true,
+          kill_some = 0,
+        },
       },
-      config = {
-        number_spawn = 1,
-        position = Airbase.getByName('Bassel Al-Assad'):getPoint(), -- TODO
-        max_radius = 10000,
-        min_radius = 3000,
-        owner = 0,
-        site_index = 1,
+    })
+
+    -- schedule messages over time
+
+    local messages = {
+      [1] = {
+        "you have 60 minutes to destroy the Baniyas refinery (N35 13 00 E35 58 00)",
+        30 * 60
       },
-      conditions = {
-        kill_all = true,
-        kill_some = 0,
+      [2] = {
+        "you have 30 minutes to destroy the Baniyas refinery (N35 13 00 E35 58 00)",
+        60 * 60
       },
-    },
-  })
+      [3] = {
+        "you have 10 minutes to destroy the Baniyas refinery (N35 13 00 E35 58 00)",
+        80 * 60
+      },
+    }
 
-  -- schedule messages over time
+    for i = 1, #messages do
+      example:schedule_msg(messages[i][2], messages[i][1])
+    end
 
-  local messages = {
-    [1] = {
-      "you have 60 minutes to destroy the Baniyas refinery (N35 13 00 E35 58 00)",
-      30 * 60
-    },
-    [2] = {
-      "you have 30 minutes to destroy the Baniyas refinery (N35 13 00 E35 58 00)",
-      60 * 60
-    },
-    [3] = {
-      "you have 10 minutes to destroy the Baniyas refinery (N35 13 00 E35 58 00)",
-      80 * 60
-    },
-  }
+    -- win config, and rewards
 
-  for i = 1, #messages do
-    example:schedule_msg(messages[i][2], messages[i][1])
+    example:set_win_config({
+      msg = "Great work! The Baniyas refinery has been neutralized and we're already noticing fewer departures from nearby red force bases.",
+      reward = XQC.reward_type.intel,
+      intel_points = 50,
+      red_impact = {
+        impact = XQC.red_impacts.lower_gce,
+        gce_pct = 50,
+      },
+    })
+
+    -- quest nullification trigger and config
+
+    example:set_null_config({
+      msg = "Great work taking Bassel Al Assad - we're canceling the strike mission at the Baniyas Refinery",
+      fun = function(self) -- always pass self into your own functions, this represents the class and will work when i insert
+        return (Airbase.getByName('Bassel Al-Assad') and (Airbase.getByName('Bassel Al-Assad'):getCoalition() == 2))
+      end,
+      delete_units = false,
+      delete_statics = true,
+      unit_behaviour = XQC.units_on_end.attack_blue_base,
+    })
+
+    -- mission fail config
+
+    example:set_fail_config({
+      msg = "It's too late - Red Force knows what were up to at Baniyas and has resupplied by other means. The refinery strike mission is cancelled.",
+      delete_units = true,
+      delete_statics = true,
+    })
+
+    example:start_quest()
   end
-
-  -- win config, and rewards
-
-  example:set_win_config({
-    msg = "Great work! The Baniyas refinery has been neutralized and we're already noticing fewer departures from nearby red force bases.",
-    reward = XQC.reward_type.intel,
-    intel_points = 50,
-    red_impact = {
-      impact = XQC.red_impacts.lower_gce,
-      gce_pct = 50,
-    },
-  })
-
-  -- quest nullification trigger and config
-
-  example:set_null_config({
-    msg = "Great work taking Bassel Al Assad - we're canceling the strike mission at the Baniyas Refinery",
-    fun = function(self) -- always pass self into your own functions, this represents the class and will work when i insert
-      return (Airbase.getByName('Bassel Al-Assad') and (Airbase.getByName('Bassel Al-Assad'):getCoalition() == 2))
-    end,
-    delete_units = false,
-    delete_statics = true,
-    unit_behaviour = XQC.units_on_end.attack_blue_base,
-  })
-
-  -- mission fail config
-
-  example:set_fail_config({
-    msg = "It's too late - Red Force knows what were up to at Baniyas and has resupplied by other means. The refinery strike mission is cancelled.",
-    delete_units = true,
-    delete_statics = true,
-  })
-
-  example:start_quest()
-
---   example:log(jsb.tbl2(example))
-
-  example:maintain()
-
-  return example
 
   -- example return structure of object after code executed
     -- {
