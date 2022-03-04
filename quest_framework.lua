@@ -57,7 +57,7 @@
     local ingame_clear = false -- clearview on message ingame
     local _time = jsb_core.time
     local _log = function(quest_name, fmt, ...)
-      local msg = fstr("JSB.XQF: %s: %s", quest_name, fmt or "", ...)
+      local msg = fstr("JSB.XQF: %s: %s", quest_name or "UKN", fstr(fmt, ...))
       __log(msg)
       if ingame_feedback then
         say(msg, ingame_display, ingame_clear)
@@ -80,6 +80,10 @@
     } -- local data
   --
 
+  -- data saving and recovery
+    local shallowCopy = jsb_core.shallowCopy
+  --
+
   -- Quest Class
     XQC = {
       trigger = {},
@@ -92,6 +96,16 @@
 
     function XQC.getDB()
       return xqc
+    end
+
+    local function player_init_setup(plyr)
+      if not xqmp[plyr] then
+        xqmp[plyr] = {
+          config = {
+
+          },
+        }
+      end
     end
 
     local function is_quest_active(quest_name)
@@ -172,9 +186,12 @@
       -- interface main methods (shared)
         -- author in mission debug messages log divert
         -- player_name @string: name of the player debug should divert to
+        -- TODO msg, menu, ...
         -- return: nil
-        function xqm_interface:player_debug(player_name)
-          self.plyr_debug = player_name
+        function xqm_interface:player_debug(player_name, debug_messages, debug_menu_generation)
+          self.plyr_debug_msg = debug_messages
+          self.author = player_name
+          self.debug_menu = debug_menu_generation
         end
 
         -- shared log function
@@ -183,15 +200,13 @@
         -- return: nil
         function xqm_interface:log(fmt, ...)
           _log(self.name, fmt, ...)
-          if self.plyr_debug then
-            local PLYR = Plyr.get(self.player_name)
+          if self.player_name and self.plyr_debug_msg and (self.author == self.player_name) then
+            local PLYR = Plyr.get(self.author)
             if PLYR then
               PLYR:msg(fstr(fmt, ...), xqc.config.default_plyr_msg)
             end
           end
         end
-
-        -- data saving and recovery
 
         -- sets the starting conditions, spawns objects, gives init info
         -- args {
@@ -201,7 +216,7 @@
         -- }
         -- return: nil
         function xqm_interface:set_start_conditions(args)
-          if {not args or type(args) ~= 'table'} or not args.msg then
+          if (not args or type(args) ~= 'table') or not args.msg then
             return self:log("Error with args in start config")
           end
           self.start = {
@@ -229,6 +244,7 @@
             self:spin()
             return true
           end
+          self:log("Error in start_quest")
         end
 
         -- sets the maximum time the quest runs
@@ -361,13 +377,14 @@
       -- backend methods (shared)
         -- TODO
         function xqm:verify_structure()
-          if not self.repeatable_config then -- redundant
-            return self:log("Cannot start quest because no repeatable config is set.")
-          elseif not self.start then
+        --   if not self.repeatable_config then -- redundant
+        --     return self:log("Cannot start quest because no repeatable config is set.")
+          if not self.start then
             return self:log("Cannot start quest because no start config is set.")
-          elseif not (self.run_time) then
+          elseif not self.run_time then
             return self:log("Must have a run time")
           end
+          return true
         end
 
             -- TODO, what if there are more than one site, for now assume all assets are in one place, need to refactor to allow for site indexing
@@ -393,7 +410,7 @@
             -- }
 
         -- spawners
-          local function find_spawn_point(search_area, max_distance, min_distance, safe_area)
+          local function find_spawn_point(search_area, max_distance, min_distance, safe_area, no_obsticles)
             if not validity_search then validity_search = jmr.areaSearch end
             local spot_found, random_point, idx = nil, nil, 0
             local item_type = { 3, 5 }
@@ -404,20 +421,25 @@
                 if random_point then
                   local surface_check = land.getSurfaceType({ x = random_point.x, y = random_point.z })
                   if surface_check and (surface_check ~= land.SurfaceType.WATER and surface_check ~= land.SurfaceType.SHALLOW_WATER) then
-                    for i = 1, 2 do
-                      if validity_search(random_point, item_type[i], nil, nil, safe_area) then
-                        break
+                    if not no_obsticles then
+                      for i = 1, 2 do
+                        if validity_search(random_point, item_type[i], nil, nil, safe_area) then
+                          break
+                        end
+                        if i > 1 then spot_found = true end
                       end
-                      if i > 1 then spot_found = true end
+                    else
+                      spot_found = true
                     end
                   end
                 end
-              until (spot_found or (idx >= 580))
+              until (spot_found or (idx >= 5000))
             --
             if not spot_found then
               _log("No spawn spot found")
               return
             end
+            return random_point
           end
 
           local function build_static(object_type, shape_name, position, object_name, mass, can_cargo)
@@ -439,10 +461,10 @@
             self.spawned.static = {}
             self.spawned.totals.static = 0
             for static, data in pairs (self.assets.static or {}) do
-              local max, min, safe = 100, 40, 70
+              local max, min, safe = 175, 55, 50
               -- first site 'placement'
               if not self.reference_position then
-                data.config.position = jmr.randomPoint(data.config.position, data.config.max_radius, data.config.min_radius)
+                data.config.position = find_spawn_point(data.config.position, data.config.max_radius, data.config.min_radius, nil, true)
                 self.reference_position = data.config.position
               end
               if not self.last_spawn_spot then max, min = nil, nil end
@@ -452,12 +474,13 @@
               for i = 1, data.config.number_spawn do -- TODO, position data
                 local static_object = coalition.addStaticObject(data.config.owner or 0, build_static(data.template.type, data.template.shape_name, self.last_spawn_spot, static .. self.name .. i))
                 if static_object then
-                  self.spawned.static[static][#self.spawned.static+1] = {
+                  if not self.spawned.static[static] then self.spawned.static[static] = {} end
+                  self.spawned.static[static][#self.spawned.static[static]+1] = {
                     static_object,
                     static_object:getName(),
                   }
                   self.spawned.totals.static = self.spawned.totals.static + 1
-                  self:log("Spawned static %s", data.template.type)
+                  self:log("Spawned static %s", static_object:getName() or "")
                 end
               end
             end
@@ -469,14 +492,14 @@
         function xqm:init()
           if self.flag == 1 or self.flag == 8 or self.flag == 9 then
             -- delayed start
-            if self.start.delay_max then
+            if self.start.delay_max then -- has a scheduled start
               timer.scheduleFunction(function() self.flag = 8 self:maintain() end, nil, _time(math.random( self.start.delay_min, self.start.delay_max )))
               self.start.delay_max = nil
               self.flag = 10
               return true
             end
             -- start config action / execute
-
+            self.max_time = self.run_time + _time()
             -- spawn statics
             if self.assets.static and self:spawn_statics() then
               -- msg schedules
@@ -500,8 +523,9 @@
             timer.scheduleFunction(function()
               self.flag = 2 -- started the quest
               self:maintain()
+              self:log("Init complete, maintain scheduled for first maintain callback.")
             end, nil, _time(xqc.config.first_maintain))
-            return
+            return true
           elseif self.flag == 10 then -- already scheduled, with delayed start
             return true
           end
@@ -511,7 +535,8 @@
           local count = 0
           for shape, array in pairs (statics) do
             for i = 1, #array do
-              if not StaticObject.getByName(array[i][2]) or (StaticObject.getByName(array[i][2]) and (StaticObject.getByName(array[i][2]):getLife() < 3)) then
+              local stat_object = StaticObject.getByName(array[i][2])
+              if not stat_object or (stat_object and not (stat_object:isExist() or (stat_object:getLife() < 3))) then
                 count = count + 1
                 -- shall we remove from the array??
               end
@@ -523,9 +548,8 @@
         -- in play spin
         function xqm:maintain()
           -- state transitions
-            if self.flag == 7 then -- error stop
-              -- stopped on error
-              -- TODO remove, dump data?
+            if self.flag == 10 then -- delayed to start
+              return
             elseif self.flag == 3 then -- fail
               -- fail condition
               -- TODO
@@ -541,17 +565,26 @@
               -- TODO
               self:run_null()
               return
-            elseif self.flag ~= 2 then
+            elseif not self.max_time and self.flag ~= 2 then -- max_time is set on start
               if not self:init() then
                 -- error in init
                 self.flag = 7
+              else
+                return
               end
             end
           --
           -- normal schedule callback
           timer.scheduleFunction(function() self:maintain() end, nil, _time(self.maintain_time))
+          if self.flag == 7 then -- error stop
+            -- stopped on error
+            -- TODO remove, dump data?
+            -- self:remove()
+            self:log("Error, state set to stop on error")
+            return
+          end
           -- check run time
-          if self.to_remove or (self.max_time < _time()) then
+          if self.to_remove or (self.max_time and (self.max_time < _time())) then
             -- quest should now be removed
             self.flag = 3
             return
@@ -560,12 +593,14 @@
           self.tick = self.tick + 1
           if self.maintain_func then
             if self.maintain_exlucsive then
-              return self.maintain_func(self)
+              return pcall(self.maintain_func, self)
             elseif self.maintain_periodicy and ((self.tick % self.maintain_periodicy) == 0) then
-              if not self.maintain_func(self) then self.maintain_func = nil self:log("Error running custom maintain func, remove func") end
+              if not pcall(self.maintain_func, self) then self.maintain_func = nil self:log("Error running custom maintain func, remove func") end
             end
           end
           -- customer trigger
+          -- fail check
+          -- null check
           -- trigger checks
           if self.quest_type == 2 then -- static kill
             local deaths = static_deaths(self.spawned.static)
@@ -679,7 +714,10 @@
     -- return: quest object with methods or nil if fail
     local function personal_quest(setup)
       if not setup.player_name then return end
-      xqc.personal[setup.player_name] = {
+      if not xqc.personal[setup.player_name] then
+        player_init_setup(setup.player_name)
+      end
+      xqc.personal[setup.player_name][setup.quest_name] = {
         name = setup.quest_name,
         player_name = setup.player_name,
         time_start = 0,
@@ -702,15 +740,14 @@
           reboot_reset = true,
         },
       }
-      setmetatable(xqc.personal[setup.player_name], { __index = method_construct(xqmp) })
-      return xqc.personal[setup.player_name]
+      setmetatable(xqc.personal[setup.player_name][setup.quest_name], { __index = method_construct(xqmp) })
+      return xqc.personal[setup.player_name][setup.quest_name]
     end
 
     -- local function to take coalition quest params and create object
     -- return: quest object with methods or nil if fail
     local function coalition_quest(setup)
-      local index = #xqc.coalition+1
-      xqc.coalition[index] = {
+      xqc.coalition[setup.quest_name] = {
         name = setup.quest_name,
         time_start = 0,
         quest_type = setup.quest_type,
@@ -741,9 +778,9 @@
           reboot_reset = true,
         },
       }
-      setmetatable(xqc.coalition[index], { __index = method_construct(xqmc) })
+      setmetatable(xqc.coalition[setup.quest_name], { __index = method_construct(xqmc) })
       xqc.idx = xqc.idx + 1
-      return xqc.coalition[index]
+      return xqc.coalition[setup.quest_name]
     end
 
     -- To create a quest object
@@ -761,10 +798,11 @@
 
     function XQF.eventHandle(event)
       if not event or (xqc.idx < 1) then return end
-      for i = 1, #xqc.coalition do
-        if xqc.coalition[i]:get_flag() == 8 and (event.id and xqc.coalition[i].start.hook_event == event.id) then
-          if not xqc.coalition[i].start.hook_func or (xqc.coalition[i].start.hook_func and xqc.coalition[i].start.hook_func(xqc.coalition[i])) then
-            xqc.coalition[i]:maintain()
+      for quest_name, quest in pairs (xqc.coalition) do
+        if quest:get_flag() == 8 and (event.id and quest.start.hook_event == event.id) then
+          if not quest.start.hook_func or (quest.start.hook_func and quest.start.hook_func(quest)) then
+            quest:maintain()
+            quest:log("Hook event fired and maintain started")
           end
         end
       end
@@ -819,16 +857,16 @@
   -- max time allowed to run after triggered/manual/preset start
   example:set_runtime(5400)
   -- for live environment debug for the author of the quest
-  example:player_debug("Brodie")
+  example:player_debug("Spunk 2 | Brodie", true, true)
   -- again msny args can be passed here instead of with individual methods
   -- see the above source code for more info
-  example:set_start_conditions({msg = start_msg})
+  example:set_start_conditions({msg = start_msg, run_time = 5400})
   -- configure how the quest repeats or not
   example:repeatable(0, false)
 
   -- add a hook to trigger the quest start
 
-  example:add_start_hook(10, nil, {min = 300, max = 1200}, { reboot_start = true, reboot_delay = {min = 3600, max = 12000}, boot_random = 35 })
+  example:add_start_hook(10, nil, {min = 2, max = 10}, { reboot_start = true, reboot_delay = {min = 3600, max = 12000}, boot_random = 35 })
 
   -- setup the static objects used for the kill goal
 
@@ -841,10 +879,10 @@
         dead = false,
       },
       config = {
-        number_spawn = 5,
-        position = {}, -- TODO
-        max_radius = 1000,
-        min_radius = 0,
+        number_spawn = 1,
+        position = Airbase.getByName('Bassel Al-Assad'):getPoint(), -- TODO
+        max_radius = 10000,
+        min_radius = 3000,
         owner = 0,
         site_index = 1,
       },
@@ -909,6 +947,12 @@
   })
 
   example:start_quest()
+
+--   example:log(jsb.tbl2(example))
+
+  example:maintain()
+
+  return example
 
   -- example return structure of object after code executed
     -- {
