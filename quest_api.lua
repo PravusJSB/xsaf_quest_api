@@ -22,7 +22,14 @@
       -- vararg ... @any (optional): any args for the format
       -- return: nil
 
-      jsb.log(fmt, ...)
+        jsb.log(fmt, ...)
+
+      --- global screen print
+      -- msg @ string
+      -- duration @number in seconds to display
+      -- clear @bool: screen clear if true
+
+        jsb.jsb_say( msg, duration, clear )
 
   -- for debug
     jsb.getCore = function() return {
@@ -175,6 +182,20 @@
     -- return @string: random key
 
     table.randomKey(table)
+
+  ]]
+
+-- XQF - XSAF Quest Framework
+  --[[ -- purpose, use and documentation
+
+    ---- end to end solution to easily script a quest, will be populated on framework completion.
+    ---- Please reference the quest_framework.lua
+
+    ----
+    --
+    --
+
+    example_function
 
   ]]
 
