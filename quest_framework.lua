@@ -234,6 +234,7 @@
             hook_func = args.hook_fun,
             delay_min = args.dealy or args.min,
             delay_max = args.max,
+            show_position = args.show_position or false,
           }
           self.run_time = args.run_time
           self.spin_time = args.spin_time or xqc.config.spin_time
@@ -505,6 +506,16 @@
           end
         --
 
+        function xqm:ao_location()
+          if not self.reference_position then
+            self:log("Error, no ref position, returning...")
+            return ""
+          elseif self.show_position then
+            local lat, lon = coord.LOtoLL( self.reference_position )
+            return fstr("\n\nTarget location (LL DMS)\n%s", UTILS.tostringLL( lat, lon, true, true ))
+          end
+        end
+
         -- init
         function xqm:init()
           if self.flag == 1 or self.flag == 8 or self.flag == 9 then
@@ -513,6 +524,7 @@
               timer.scheduleFunction(function() self.flag = 8 self:maintain() end, nil, _time(math.random( self.start.delay_min, self.start.delay_max )))
               self.start.delay_max = nil
               self.flag = 10
+              self:log("Start, delayed")
               return true
             end
             -- start config action / execute
@@ -529,7 +541,7 @@
               end
               -- TODO spawn other objects
               -- start msg
-              self:msg(self.start.msg)
+              self:msg(self.start.msg .. self:ao_location()) -- TODO
               self.flag = 2
             elseif self.assets.static then
               -- error in creating the site...
@@ -746,7 +758,7 @@
         huey = 2,
       }
     --
-
+ 
     -- local function to take personal quest params and create object
     -- return: quest object with methods or nil if fail
     local function personal_quest(setup)
@@ -790,11 +802,11 @@
         quest_type = setup.quest_type,
         flag = 0,
         tick = 0,
-          -- run_time = setup.run_time or nil,
+        run_time = setup.run_time or nil,
           -- spin_time = setup.spin_time or nil,
           -- maintain_time = setup.maintain_time or xqc.config.maintain_time,
         spin_func = setup.spin_fun or nil,
-        start = nil,
+        start = setup.start or nil,
           -- {
           --   start_func = nil, -- custom start func
           --   msg = nil,
@@ -845,7 +857,7 @@
       end
     end
     
-    local quest_logs = { xqmc, xqmp }
+    local quest_logs = { xqc.coalition, xqc.personal }
 
     -- for recall of quest, by manual start or start from elsewehere
     function XQF.getQuest(name, args)
@@ -923,7 +935,7 @@
     example:player_debug("Spunk 2 | Brodie", true, true)
     -- again msny args can be passed here instead of with individual methods
     -- see the above source code for more info
-    example:set_start_conditions({msg = start_msg, run_time = 5400})
+    example:set_start_conditions({msg = start_msg, run_time = 5400, show_position = true})
     -- configure how the quest repeats or not
     example:repeatable(0, false)
 
@@ -1010,7 +1022,94 @@
     })
 
     example:start_quest()
+
+    example:msg("Example quest started, force maintain if you wish to override the trigger.")
   end
+
+  -- lightwight setup -- TODO
+    local quest_data = {
+      quest_name = "ExampleQuestSlim",
+      quest_type = XQC.quest_type.static_kill,
+      start = {
+        msg = "Intelligence has uncovered that Red Force is highly dependant on the Baniyas Refinery. Your mission is to destroy all fuel tanks on the north side of the refinery and you have 90 minutes to do so.\n\nWe believe success will lead to few red air activity for the next several hours.",
+        start_func = nil,
+        hook_event = 10,
+        hook_func = nil,
+        delay_min = 2,
+        delay_max = 10,
+        non_trigger = {
+          from_reboot = true,
+          delay_after_reboot = {min = 3600, max = 12000},
+          random_start = 35,
+          condition_func = nil,
+          show_position = true,
+        },
+        base = "Bassel Al-Assad",
+        owned_by = 1,
+      },
+      run_time = 5400,
+      plyr_debug_msg = true,
+      author = "Spunk 2 | Brodie",
+      debug_menu = true,
+      spin_time = nil,
+      maintain_time = nil,
+      on_trigger_start = nil,
+      msg_store = {
+        [1] = {
+          30 * 60,
+          "you have 60 minutes to destroy the Baniyas refinery (N35 13 00 E35 58 00)",
+        },
+        [2] = {
+          60 * 60,
+          "you have 30 minutes to destroy the Baniyas refinery (N35 13 00 E35 58 00)",
+        },
+        [3] = {
+          80 * 60,
+          "you have 10 minutes to destroy the Baniyas refinery (N35 13 00 E35 58 00)",
+        },
+      },
+      repeatable_config = {
+        repeatable = true,
+        min_time = 0,
+        reboot_reset = false,
+      },
+      assets = {
+        static = {
+          fuel_tanks = {
+            template = {
+              category = "Fortifications",
+              shape_name = "kazarma2", -- TODO
+              type = "Barracks 2", -- TODO
+              dead = false,
+            },
+            config = {
+              number_spawn = 1,
+              position = Airbase.getByName('Bassel Al-Assad'):getPoint(), -- TODO
+              max_radius = 10000,
+              min_radius = 3000,
+              owner = 0,
+              site_index = 1,
+            },
+            conditions = {
+              kill_all = true,
+              kill_some = 0,
+            },
+          },
+        },
+      },
+      completion = {
+        msg = "Great work! The Baniyas refinery has been neutralized and we're already noticing fewer departures from nearby red force bases.",
+        reward = XQC.reward_type.intel,
+        intel_points = 50,
+        red_impact = {
+          impact = XQC.red_impacts.lower_gce,
+          gce_pct = 50,
+        },
+      },
+    }
+
+    local example_slim = XQF.newQuest(quest_data)
+  --
 
   -- example return structure of object after code executed
     -- {
