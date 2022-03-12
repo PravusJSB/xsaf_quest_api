@@ -31,6 +31,54 @@
 
         jsb.jsb_say( msg, duration, clear )
 
+      --- data saving
+      -- data @table
+      -- file_name @string
+      -- table_name @string will be the table name in the save, required...
+
+        jsb.save(data, file_name, table_name)
+
+      --- table copy function without any metamethod copy
+      -- data @table
+      -- return @table: the copy
+
+        jsb.shallowCopy(data)
+
+      --- table copy function and metamethod copy
+      -- data @table
+      -- return @table: the copy
+
+        jsb.deepCopy(data)
+
+      --- data loading
+      -- file_name @string
+
+        jsb.load(file_name)
+
+      --- return a DCS flag value
+      -- flag_name @string
+      -- return @number (0/1 is true or false)
+
+        jsb.chflg(flag_name)
+
+      --- makes badamooms
+      -- position @vector3
+      -- power @float(number): I normally use 0.000001 for effect and no damage...
+
+        jsb.boom(position, power)
+
+      --- return the mission time (Overloaded)
+      -- time @number: if you use this is a timer.scheduleFunction call then put the variable in the perenthesese that way a calendar search is done to return a time
+      -- that will not clash with another callback time, so the return will not be time + time exact. If you want exact then do time() + time ...
+      -- return @number: DCS time + time (adjusted for callback)
+
+        jsb.time(time)
+
+        --- a shortened string.format
+        -- fmt, ...
+
+        jsb.fstr(fmt, ...)
+
   -- for debug
     jsb.getCore = function() return {
       log = debug_fun,
@@ -39,6 +87,10 @@
       chflg = debug_fun,
       time = debug_fun,
       fstr = debug_fun,
+      shallowCopy = debug_fun,
+      deepCopy = debug_fun,
+      boom = debug_fun,
+      load = debug_fun,
     } end
   --
   ]]
@@ -197,7 +249,7 @@
 
     example_function
 
-  ]]
+  ]] 
 
   ---- simple code to add to mission to enable a faux console to be able to live load code into the mission for testing
   ---- instead of having to restart. Place log outputs for returns or ingame print for quick feedback
@@ -218,6 +270,30 @@
 
     -- invocation
       local ai = newAI.getAI()
+
+      this is a hard one for me to document, but this module takes a single line call and does the rest, with args to suit your request.
+      taskings it can handle for you ...
+
+      strike_function -- (Air) objects strike
+      denial_function -- (Air) runway denial
+      multi_function -- (Air) single or multi targets
+      land_function -- (Air) will direct a plane to land, and if asked for re-arm and re-fuel and continue task
+      multiGnd_function -- (Ground) single or multi target
+      aiescort_function -- (Air) complex sub module to create anm escort for another
+      aifollow_function -- (Air/Ground) simple follow
+      patrol_function -- (Air/Ground) a set of points that will be looped, or a cool random 25nm radius random spiragraph pattern using 1 central point
+      aero_function -- (Air) perform aerobatic move
+      intercept_function -- (Air) intercept and engage specific target
+      helo_log_function -- tell a helo to move a crate from A>B
+      para_function -- paratrooper drop
+      move_function -- WIP??
+
+      the simplicity of this is can be called like this...
+
+      ai.register( newAI.role.<ROLE>, { no_option = true, point = base_pos, types = "Ground Units", dist = 15000, alt = 5250 } )
+
+      Talk to me abou this one, as it will take me an age to document it, its complicated and really powerful. It's not just a fire and forget,
+      it makes sure a thing does a thing or else tries to ensure it does that thing again.
   ]]
 --
 
@@ -228,5 +304,11 @@
 
     -- invocation
       local api = jsb.getAPI()
+
+      --- adds specific weapons to an airbase warehouse
+      -- base @string: receiving airbase
+      -- clsid @string: the clsid of said item to add
+
+      api.addWeapon(base, clsid)
   ]]
 --
