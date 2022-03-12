@@ -45,7 +45,7 @@
 
     local do_not_save = DONOTSAVE -- is a global variable in my development build to stop data saving out
 
-    local trigger_get_zone = trigger.misc.getZone -- DCS SSE func for getting a zone at runtime
+    local get_zone = trigger.misc.getZone -- DCS SSE func for getting a zone at runtime
     local sZones = globalOptions.spawn.red.zRef -- a DB of zones which surround all bases in XSAF, key'd by base name, comment out to load in this code
   --
 
@@ -104,19 +104,20 @@
       if not xqmp[plyr] then
         xqmp[plyr] = {
           config = {
-
+            -- TODO
           },
         }
       end
     end
 
+    local quest_logs = { xqc.coalition, xqc.personal }
+
     local function is_quest_active(quest_name)
       if not quest_name then return end
-      local quests = { xqmp, xqmc }
       for i = 1, 2 do
-        for j = 1, #quests[i] do
-          if (quest_name == quests[i][j].name) then
-            return quests[i][j].flag == 2
+        for quest_object_name, quest in pairs (quest_logs[i]) do
+          if quest_object_name == quest_name then
+            return quest.flag == 2
           end
         end
       end
@@ -126,13 +127,15 @@
 
       -- personal
         -- player related funs
-        function xqmp:get_class()
+        function xqmp:get_plyr_class()
           return Plyr.get(self.player_name)
         end
 
         function xqmp:msg(fmt, ...)
-          local plyr = self:get_class()
-          if plyr then plyr:msg(fstr(fmt, ...), xqc.config.default_plyr_msg) end
+          local plyr = self:get_plyr_class()
+          if plyr then
+            return plyr:msg(fstr(fmt, ...), xqc.config.default_plyr_msg)
+          end
         end
       --
 
@@ -142,7 +145,7 @@
         -- ... @vararg of any args for the string
         -- return: nil
         function xqmc:msg(fmt, ...)
-          say(fstr(fmt, ...), xqc.config.default_coalition_msg)
+          return say(fstr(fmt, ...), xqc.config.default_coalition_msg)
         end
 
         -- adds a hook to start the quest
@@ -294,8 +297,9 @@
 
         -- replace the maintain function
         -- return
-        function xqm_interface:replace_maintain(func)
-          --
+        function xqm_interface:replace_maintain(func, excl)
+          self.maintain_func = func
+          self.maintain_exlucsive = excl or nil
         end
 
         -- add a custom trigger function inside the 'maintain' spin
@@ -325,12 +329,9 @@
         end
 
         -- pass in the details of any statics to be spawned on start
-        function xqm_interface:create_static_on_start(args)
-          -- if not self.start then
-          --   return self:log("Must set start conditions before defining statics")
+        function xqm_interface:create_static_on_start(static_data)
           -- end
-          self.assets.static = shallowCopy(args)
-          -- self.start.statics = true
+          self.assets.static = shallowCopy(static_data)
         end
 
         function xqm_interface:set_win_config(config)
@@ -338,19 +339,23 @@
         end
 
         function xqm_interface:set_null_config(config)
-          self.null_config.msg = config.msg or fstr("Quest, %s, failed.", self.name)
-          self.null_config.func = config.fun
-          self.null_config.del_units = config.delete_units
-          self.null_config.del_stat = config.delete_statics
-          self.null_config.unit_behaviour = config.unit_behaviour
+          self.null_config = {
+            msg = config.msg or fstr("Quest, %s, failed.", self.name),
+            func = config.fun,
+            del_units = config.delete_units,
+            del_stat = config.delete_statics,
+            unit_behaviour = config.unit_behaviour,
+          }
         end
 
         function xqm_interface:set_fail_config(config)
-          self.failure.msg = config.msg or fstr("Quest, %s, failed.", self.name)
-          self.failure.func = config.fun
-          self.failure.del_units = config.delete_units
-          self.failure.del_stat = config.delete_statics
-          self.failure.unit_behaviour = config.unit_behaviour
+          self.failure = {
+            msg = config.msg or fstr("Quest, %s, failed.", self.name),
+            func = config.fun,
+            del_units = config.delete_units,
+            del_stat = config.delete_statics,
+            unit_behaviour = config.unit_behaviour,
+          }
         end
 
         -- pass in a custom function to watch for the start trigger or in addition to
@@ -856,8 +861,6 @@
         end
       end
     end
-    
-    local quest_logs = { xqc.coalition, xqc.personal }
 
     -- for recall of quest, by manual start or start from elsewehere
     function XQF.getQuest(name, args)
