@@ -358,6 +358,28 @@
           }
         end
 
+        local build_group, random_name
+
+        local function spawn_from_spm(type_name, position, is_red)
+          if not random_name then random_name = Spm.randomName end
+          local name = random_name()
+          local group = {}
+          for i = 1, #type_name do
+            group[#group+1] = {
+              ["type"] = type_name[i],
+              ["y"] = position.z or position.y,
+              ["x"] = position.x,
+              ["heading"] = math.random(359),
+            }
+          end
+          return Spm.buildGroundGroup(is_red, group, name), name
+        end
+
+        function xqm_interface:spawn_unit(type_name, position, is_red)
+          if is_red then is_red = 0 end
+          return spawn_from_spm(type_name, position, is_red or 1)
+        end
+
         -- pass in a custom function to watch for the start trigger or in addition to
         -- no need to use any callbacks in your code, pass in self as the 1st arg
         -- only_custom @bool (optional): pass true to bypass all framework code from maintain

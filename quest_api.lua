@@ -144,8 +144,6 @@
 
           jmr.areaSearch(zone_area, item_type, item_name, delete, search_size)
 
-        ----
-
         ---- Find players at a given location
         -- vector @vector3 (optional): if none given then use mPoint by default
         -- area @number (optional): if none given then use mRad by default
@@ -153,17 +151,34 @@
 
           jmr.getPlayers(vector, area)
         
-        ----
+        ---- Searches a zone area and returns if units meeting args are true
+        -- vector @vector3 (optional): if none given then use mPoint by default
+        -- radius @number: (optional) radius of search area, defaults to jmr.mRad
+        -- side @DCS_Enum: 0,1,2 for coalition
+        -- name @string (optoinal): For a specific UNIT_NAME
+        -- return @any: if name given will return boolean, else if finds unit will return the DCS_Unit of the first and only the first found else will return nil
         
-        jmr.inZone
+          jmr.inZone(vec3, rad, side, name)
 
-        ----
+      ---- Searches an area and returns ALL units found
+      -- vector @vector3 (optional): if none given then use mPoint by default
+      -- radius @number: (optional) radius of search area, defaults to jmr.mRad
+      -- side @DCS_Enum: 0,1,2 for coalition
+      -- category @number: (optional) DCS_Enum of object category
+      -- blue_red @ boolean (optianal): if true will alter the return type
+      -- return @array: returns all units of given args, or both red and blue units in a coalition indexed array
         
-        jmr.findUnits
+          jmr.findUnits(vec3, rad, side, cat, blue_red)
 
-        ----
+      ---- Searches a zone area and returns a count of units/groups/...
+      -- zone @DCS_Zone (optional): if none given then use mPoint/mRad by default or can pass as a zone {point={},radius=n}
+      -- coal @DCS_Enum: 0,1,2 for coalition
+      -- category @number: (optional) DCS_Enum of object category
+      -- unitBool @bool: (optional) if true counts units not groups
+      -- quick @bool (optional): overload and redundant, acts like 'inZone' and returns 1 if finds any
+      -- return @number: 1 if quick, else number of units or groups in zone provided
         
-        jmr.countInZone
+          jmr.countInZone(zone, coal, cat, unitBool, quick)
 
         ----
         
@@ -180,6 +195,10 @@
         ----
         
         jmr.randomPoint
+
+        ----
+        
+        jmr.getSO
         
         ----
         
@@ -234,6 +253,38 @@
     -- return @string: random key
 
     table.randomKey(table)
+
+    ---- Spawning a unit
+    -- WIP .... 
+
+    Spm.buildGroundGroup(0, troops, "POWInf" .. self.spawned.idx) - >
+
+        for i = 1, #troops do
+          if self.pre_fab then
+            local new_pos = jmr.randomPoint(self.ini_pos_middle_troops, 8, 0)
+            group_build.units[i].x = new_pos.x
+            group_build.units[i].y = new_pos.z or new_pos.y
+          end
+        end
+        self.spawned.troops.troops = coalition.addGroup( 0, Group.Category.GROUND, group_build ) - > group_object
+
+    troops = {
+      [1] =
+      {
+        ["type"] = "Infantry AK",
+        ["y"] = 129157.23956126,
+        ["x"] = 50643.462988881,
+        ["heading"] = 0.66322511575785,
+      }, -- end of [1]
+    }
+
+    Grp.get(returned_object:getName()):routeOnRoad({
+      to_point = blue_base:getPoint(),
+      start_point = returned_object:getPosition().p,
+      start_name = blue_base:getName(),
+      to_name = move_name,
+      spd = 90,
+    })
 
   ]]
 
@@ -291,6 +342,23 @@
       the simplicity of this is can be called like this...
 
       ai.register( newAI.role.<ROLE>, { no_option = true, point = base_pos, types = "Ground Units", dist = 15000, alt = 5250 } )
+
+      newAI.role = {
+        ['strike'] = 1,
+        ['denial'] = 2,
+        ['multi'] = 3,
+        ['tlam'] = 4, -- tomahawk land attack missile
+        ['land'] = 5,
+        ['multi_gnd'] = 6,
+        ['aiescort'] = 7, -- TODO
+        ['aifollow'] = 8, -- TODO
+        ['patrol'] = 9, -- TODO
+        ['aero'] = 10, -- TODO
+        ['intercept'] = 11, -- TODO
+        ['helo_log'] = 12, -- TODO
+        ['para'] = 13, -- TODO
+        ['move'] = 14, -- TODO
+      }
 
       Talk to me abou this one, as it will take me an age to document it, its complicated and really powerful. It's not just a fire and forget,
       it makes sure a thing does a thing or else tries to ensure it does that thing again.
